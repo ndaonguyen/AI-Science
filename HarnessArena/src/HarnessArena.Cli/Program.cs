@@ -150,7 +150,7 @@ static void PrintUsage()
     Console.WriteLine("Agents:");
     Console.WriteLine("  openai  - call OpenAI API (requires OPENAI_API_KEY)  [default]");
     Console.WriteLine("  mock    - deterministic scripted responses, no API calls");
-    Console.WriteLine("  claude  - call Anthropic API (not yet wired)");
+    Console.WriteLine("  claude  - call Anthropic API (requires ANTHROPIC_API_KEY)");
     Console.WriteLine();
     Console.WriteLine($"Configs: {string.Join(", ", Configs.All.Keys)}");
 }
