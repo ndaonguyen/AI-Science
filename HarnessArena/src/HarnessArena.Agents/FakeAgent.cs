@@ -54,7 +54,7 @@ public sealed class FakeAgent : IAgent
             status = RunStatus.Error;
             var now = DateTimeOffset.UtcNow;
             return new Run(runId, task.Id, config.Id, started, now, status,
-                finalAnswer: null, trace, new RunUsage(0, 0, 0, now - started));
+                FinalAnswer: null, trace, new RunUsage(0, 0, 0, now - started));
         }
 
         var maxIter = Math.Min(task.MaxIterations, config.MaxIterations);
