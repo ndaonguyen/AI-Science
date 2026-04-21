@@ -1,0 +1,12 @@
+id: math-medium-03
+domain: math
+difficulty: 2
+prompt: |
+  A shirt originally costs $80. The store offers a 25% discount, and then an
+  additional 10% off the discounted price at checkout. What is the final price
+  in dollars?
+
+  Use the calculator tool if needed, then call finish with just the final number
+  (no currency symbol).
+expectedAnswer: "54"
+maxIterations: 8

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>HarnessArena.Agents</RootNamespace>
+    <AssemblyName>HarnessArena.Agents</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Anthropic" Version="12.11.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\HarnessArena.Core\HarnessArena.Core.csproj" />
+  </ItemGroup>
+</Project>

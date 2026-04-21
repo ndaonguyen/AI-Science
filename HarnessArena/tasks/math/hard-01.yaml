@@ -1,0 +1,12 @@
+id: math-hard-01
+domain: math
+difficulty: 3
+prompt: |
+  A water tank can be filled by pipe A in 4 hours and by pipe B in 6 hours.
+  If both pipes are opened together, how many hours (as a decimal rounded to two
+  places) does it take to fill the tank?
+
+  Use the calculator tool if needed, then call finish with just the final number
+  (e.g. "2.40").
+expectedAnswer: "2.40"
+maxIterations: 10

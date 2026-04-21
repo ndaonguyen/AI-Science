@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>HarnessArena.Grading</RootNamespace>
+    <AssemblyName>HarnessArena.Grading</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\HarnessArena.Core\HarnessArena.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,10 @@
+id: math-easy-02
+domain: math
+difficulty: 1
+prompt: |
+  A classroom has 24 students. One third of them are absent today.
+  How many students are present?
+
+  Use the calculator tool if needed, then call finish with just the final number.
+expectedAnswer: "16"
+maxIterations: 5

@@ -1,0 +1,11 @@
+id: math-medium-01
+domain: math
+difficulty: 2
+prompt: |
+  A train leaves Station A at 9:00 AM travelling at 60 km/h.
+  Station B is 180 km away. At what time does the train arrive at Station B?
+
+  Answer in 24-hour format as HH:MM. Use the calculator tool if needed,
+  then call finish with just the time (e.g. "12:00").
+expectedAnswer: "12:00"
+maxIterations: 7

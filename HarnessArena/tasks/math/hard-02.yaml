@@ -1,0 +1,12 @@
+id: math-hard-02
+domain: math
+difficulty: 3
+prompt: |
+  A shop sells a product for $120, making a 20% profit on its cost price.
+  During a sale, the shop reduces the selling price by $18. What is the shop's
+  profit (in dollars) on each product sold during the sale?
+
+  Use the calculator tool if needed, then call finish with just the final number
+  (no currency symbol).
+expectedAnswer: "2"
+maxIterations: 10

@@ -1,0 +1,10 @@
+id: math-easy-01
+domain: math
+difficulty: 1
+prompt: |
+  Sarah has 3 boxes of apples. Each box contains 12 apples.
+  She gives away 7 apples to her neighbour. How many apples does she have left?
+
+  Use the calculator tool if needed, then call finish with just the final number.
+expectedAnswer: "29"
+maxIterations: 5

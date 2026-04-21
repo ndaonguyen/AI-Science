@@ -1,0 +1,23 @@
+# Build output
+bin/
+obj/
+out/
+
+# IDE
+.idea/
+.vs/
+*.user
+*.suo
+
+# Runs (local traces, never commit)
+runs/*.json
+!runs/.gitkeep
+
+# Env
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db

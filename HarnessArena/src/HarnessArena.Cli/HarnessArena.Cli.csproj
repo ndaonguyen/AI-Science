@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>HarnessArena.Cli</RootNamespace>
+    <AssemblyName>harness</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\HarnessArena.Core\HarnessArena.Core.csproj" />
+    <ProjectReference Include="..\HarnessArena.Tools\HarnessArena.Tools.csproj" />
+    <ProjectReference Include="..\HarnessArena.Agents\HarnessArena.Agents.csproj" />
+    <ProjectReference Include="..\HarnessArena.Grading\HarnessArena.Grading.csproj" />
+    <ProjectReference Include="..\HarnessArena.Runner\HarnessArena.Runner.csproj" />
+  </ItemGroup>
+</Project>

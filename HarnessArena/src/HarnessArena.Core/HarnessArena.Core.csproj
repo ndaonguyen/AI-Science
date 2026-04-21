@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>HarnessArena.Core</RootNamespace>
+    <AssemblyName>HarnessArena.Core</AssemblyName>
+  </PropertyGroup>
+</Project>

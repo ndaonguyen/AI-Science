@@ -1,0 +1,15 @@
+id: math-hard-03
+domain: math
+difficulty: 3
+prompt: |
+  A cyclist rides from town X to town Y at 20 km/h and returns at 30 km/h.
+  What is the cyclist's average speed for the entire journey, in km/h, rounded
+  to two decimal places?
+
+  (Hint: average speed is total distance divided by total time, not the average
+  of the two speeds.)
+
+  Use the calculator tool if needed, then call finish with just the final number
+  (e.g. "24.00").
+expectedAnswer: "24.00"
+maxIterations: 10
