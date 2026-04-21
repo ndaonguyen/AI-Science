@@ -8,43 +8,60 @@ Modern AI agents live or die by their harness — the scaffolding around the LLM
 
 ## Current state — v0
 
-- Single agent loop talking to Claude via the official Anthropic C# SDK.
-- Two tools: `calculator` and `finish`.
-- Math word problem task suite loaded from YAML.
-- Exact-match grader.
-- CLI that runs a task suite against one config and writes JSON traces.
+- Three agent backends: OpenAI (live), mock (scripted, free), Claude (stub)
+- Two tools: `calculator` and `finish`
+- Math word problem task suite loaded from YAML (10 tasks)
+- Three hand-tuned configs: `baseline`, `strict`, `no-calculator`
+- Exact-match grader
+- CLI that runs the suite, prints a leaderboard, writes JSON traces
 
 ## Quick start
 
-```bash
-# 1. Set your API key
-export ANTHROPIC_API_KEY=sk-ant-...
+**Try it without any API key first (mock mode):**
 
-# 2. Restore + build
+```powershell
 dotnet build
+dotnet run --project src/HarnessArena.Cli -- run --tasks tasks/math --agent mock
+```
 
-# 3. Run the math suite
-dotnet run --project src/HarnessArena.Cli -- \
-    --tasks tasks/math \
-    --config baseline
+You'll see all 10 tasks run in under a second, with a leaderboard showing mock results.
 
-# 4. Inspect traces
-ls runs/
+**Then run against real OpenAI:**
+
+```powershell
+$env:OPENAI_API_KEY = "sk-proj-..."
+dotnet run --project src/HarnessArena.Cli -- run --tasks tasks/math --agent openai --config baseline
 ```
 
 ## Architecture
 
 ```
-HarnessArena.Core       — Models, interfaces (no deps)
-HarnessArena.Tools      — Tool implementations
-HarnessArena.Agents     — Claude agent loop
-HarnessArena.Grading    — Exact-match grader (LLM judge later)
-HarnessArena.Runner     — Task × Config orchestration
-HarnessArena.Cli        — Console entrypoint
+HarnessArena.Core       - Models, interfaces (no deps)
+HarnessArena.Tools      - Tool implementations
+HarnessArena.Agents     - OpenAIAgent, FakeAgent, ClaudeAgent (stub)
+HarnessArena.Grading    - Exact-match grader (LLM judge later)
+HarnessArena.Runner     - Task × Config orchestration
+HarnessArena.Cli        - Console entrypoint
 ```
 
-See `docs/PLAN.md` for the full v0 → v1 → v2 build plan.
+Dependencies only point inward. `Core` depends on nothing. See `docs/PLAN.md` for the v0 → v1 → v2 plan.
 
-## Heads-up
+## CLI reference
 
-The Anthropic C# SDK is in beta. Some type names in `ClaudeAgent.cs` may need adjustment when you first compile — the code documents the *shape* of the integration. Build incrementally: get a no-tool "hello" call working before wiring tools.
+```
+harness run --tasks <folder> [--agent <kind>] [--config <id> ...] [--output <folder>]
+
+Agents:
+  openai   call OpenAI API (requires OPENAI_API_KEY)   [default]
+  mock     scripted fake responses, no API calls
+  claude   call Anthropic API (not yet wired)
+
+Configs:
+  baseline      - tool use allowed, normal prompt
+  strict        - must use calculator for every step
+  no-calculator - no calculator tool, forced to compute in-head
+```
+
+## Cost expectation (OpenAI, gpt-4o-mini)
+
+One full suite run (10 tasks, baseline config): roughly $0.005–$0.02. You can run all three configs against all tasks dozens of times on $1.
