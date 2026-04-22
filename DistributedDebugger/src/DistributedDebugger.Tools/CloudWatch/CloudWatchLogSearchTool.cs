@@ -5,6 +5,7 @@ using Amazon.CloudWatchLogs.Model;
 using Amazon.Runtime;
 using Amazon.Runtime.CredentialManagement;
 using DistributedDebugger.Core.Tools;
+using InvalidOperationException = System.InvalidOperationException;
 
 namespace DistributedDebugger.Tools.CloudWatch;
 
@@ -149,7 +150,7 @@ public sealed class CloudWatchLogSearchTool : IDebugTool, IDisposable
         try
         {
             chunks = await FetchLogsAsync(
-                region, logGroup, service, filterPattern, start, end, ct);
+                region, logGroup, service, environment, filterPattern, start, end, ct);
         }
         catch (AmazonCloudWatchLogsException ex)
         {
@@ -188,12 +189,13 @@ public sealed class CloudWatchLogSearchTool : IDebugTool, IDisposable
         string region,
         string logGroup,
         string service,
+        string environment,
         string filterPattern,
         DateTimeOffset start,
         DateTimeOffset end,
         CancellationToken ct)
     {
-        var client = GetClient(region);
+        var client = GetClient(region, environment);
 
         var request = new FilterLogEventsRequest
         {
@@ -231,47 +233,42 @@ public sealed class CloudWatchLogSearchTool : IDebugTool, IDisposable
         return all;
     }
 
-    private AmazonCloudWatchLogsClient GetClient(string region)
+    private AmazonCloudWatchLogsClient GetClient(string region, string environment)
     {
-        if (!_clientsByRegion.TryGetValue(region, out var client))
+        var profileName = ResolveProfile(environment);
+        var cacheKey = $"{region}:{profileName}";
+
+        if (!_clientsByRegion.TryGetValue(cacheKey, out var client))
         {
             var endpoint = RegionEndpoint.GetBySystemName(region);
-            var profileName = Environment.GetEnvironmentVariable("AWS_PROFILE");
-
-            AWSCredentials? credentials = null;
-            if (!string.IsNullOrWhiteSpace(profileName))
-            {
-                // SSO profiles live in ~/.aws/config (not ~/.aws/credentials).
-                // SharedCredentialsFile can read both files; AWSCredentialsFactory
-                // properly resolves the SSO token cache on disk.
-                var awsDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aws");
-                var configPath = Path.Combine(awsDir, "config");
-                var credPath  = Path.Combine(awsDir, "credentials");
-
-                // Try config file first (where SSO profiles live), then credentials file.
-                foreach (var path in new[] { configPath, credPath })
-                {
-                    if (!File.Exists(path)) continue;
-                    var store = new SharedCredentialsFile(path);
-                    if (store.TryGetProfile(profileName, out var profile) &&
-                        AWSCredentialsFactory.TryGetAWSCredentials(profile, store, out credentials))
-                        break;
-                }
-            }
+            var credentials = LoadCredentialsViaCli(profileName);
+            Console.Error.WriteLine(
+                $"[CloudWatch] env='{environment}' → profile='{profileName}' → " +
+                $"{credentials?.GetType().Name ?? "null (CLI failed, falling back to default chain)"}");
 
             client = credentials is not null
                 ? new AmazonCloudWatchLogsClient(credentials, endpoint)
                 : new AmazonCloudWatchLogsClient(endpoint);
 
-            Console.Error.WriteLine(
-                $"[CloudWatch] region={region} profile={profileName ?? "(none)"} " +
-                $"credType={credentials?.GetType().Name ?? "fallback-chain"}");
-
-            _clientsByRegion[region] = client;
+            _clientsByRegion[cacheKey] = client;
         }
         return client;
     }
+
+    /// <summary>
+    /// Maps the environment name the AI uses to the matching AWS CLI profile.
+    /// This means the user only needs to run `aws sso login --profile {profile}`
+    /// once per session — no manual profile switching needed.
+    /// </summary>
+    private static string ResolveProfile(string environment) =>
+        environment.ToLowerInvariant() switch
+        {
+            "test"                => "dev",
+            "staging"             => "staging",
+            "live"                => "live",
+            "live-ca-central-1"   => "live-ca",
+            _                     => Environment.GetEnvironmentVariable("AWS_PROFILE")?.Trim('"', '\'', ' ') ?? "dev",
+        };
 
     private static string FormatResult(
         string logGroup,
@@ -287,6 +284,57 @@ public sealed class CloudWatchLogSearchTool : IDebugTool, IDisposable
 
         var body = string.Join("\n", top.Select(c => c.Render()));
         return header + "\n" + body;
+    }
+
+    /// <summary>
+    /// Shells out to `aws configure export-credentials --profile X` to get
+    /// short-lived temporary credentials. This works for every profile type
+    /// (SSO, assume-role, MFA) and handles malformed config files gracefully
+    /// because the CLI does the heavy lifting.
+    /// Run `aws sso login --profile X` first if you get an auth error.
+    /// </summary>
+    private static AWSCredentials? LoadCredentialsViaCli(string profileName)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("aws",
+                $"configure export-credentials --profile {profileName}")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError  = true,
+                UseShellExecute        = false,
+                CreateNoWindow         = true,
+            };
+
+            using var proc = System.Diagnostics.Process.Start(psi)!;
+            var stdout = proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit();
+
+            if (proc.ExitCode != 0)
+            {
+                var err = proc.StandardError.ReadToEnd();
+                throw new InvalidOperationException(
+                    $"aws configure export-credentials failed (exit {proc.ExitCode}): {err.Trim()}\n" +
+                    $"Run: aws sso login --profile {profileName}");
+            }
+
+            using var doc = JsonDocument.Parse(stdout);
+            var root = doc.RootElement;
+
+            var accessKey  = root.GetProperty("AccessKeyId").GetString()!;
+            var secretKey  = root.GetProperty("SecretAccessKey").GetString()!;
+            var token      = root.TryGetProperty("SessionToken", out var t)
+                             ? t.GetString() : null;
+
+            return string.IsNullOrWhiteSpace(token)
+                ? new BasicAWSCredentials(accessKey, secretKey)
+                : new SessionAWSCredentials(accessKey, secretKey, token);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[CloudWatch] CLI credential load failed: {ex.Message}");
+            return null;
+        }
     }
 
     public void Dispose()
