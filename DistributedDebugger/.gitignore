@@ -1,0 +1,22 @@
+# Build outputs
+bin/
+obj/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+# Launch settings (contains secrets like API keys)
+**/Properties/launchSettings.json
+
+# Logs
+*.log
+out.txt
+err.txt
+build_output.txt
+build2.txt
+sln_build.txt
+
