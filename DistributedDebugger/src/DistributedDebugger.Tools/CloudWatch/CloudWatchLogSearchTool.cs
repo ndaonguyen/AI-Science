@@ -2,6 +2,8 @@ using System.Text.Json;
 using Amazon;
 using Amazon.CloudWatchLogs;
 using Amazon.CloudWatchLogs.Model;
+using Amazon.Runtime;
+using Amazon.Runtime.CredentialManagement;
 using DistributedDebugger.Core.Tools;
 
 namespace DistributedDebugger.Tools.CloudWatch;
@@ -234,7 +236,38 @@ public sealed class CloudWatchLogSearchTool : IDebugTool, IDisposable
         if (!_clientsByRegion.TryGetValue(region, out var client))
         {
             var endpoint = RegionEndpoint.GetBySystemName(region);
-            client = new AmazonCloudWatchLogsClient(endpoint);
+            var profileName = Environment.GetEnvironmentVariable("AWS_PROFILE");
+
+            AWSCredentials? credentials = null;
+            if (!string.IsNullOrWhiteSpace(profileName))
+            {
+                // SSO profiles live in ~/.aws/config (not ~/.aws/credentials).
+                // SharedCredentialsFile can read both files; AWSCredentialsFactory
+                // properly resolves the SSO token cache on disk.
+                var awsDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aws");
+                var configPath = Path.Combine(awsDir, "config");
+                var credPath  = Path.Combine(awsDir, "credentials");
+
+                // Try config file first (where SSO profiles live), then credentials file.
+                foreach (var path in new[] { configPath, credPath })
+                {
+                    if (!File.Exists(path)) continue;
+                    var store = new SharedCredentialsFile(path);
+                    if (store.TryGetProfile(profileName, out var profile) &&
+                        AWSCredentialsFactory.TryGetAWSCredentials(profile, store, out credentials))
+                        break;
+                }
+            }
+
+            client = credentials is not null
+                ? new AmazonCloudWatchLogsClient(credentials, endpoint)
+                : new AmazonCloudWatchLogsClient(endpoint);
+
+            Console.Error.WriteLine(
+                $"[CloudWatch] region={region} profile={profileName ?? "(none)"} " +
+                $"credType={credentials?.GetType().Name ?? "fallback-chain"}");
+
             _clientsByRegion[region] = client;
         }
         return client;

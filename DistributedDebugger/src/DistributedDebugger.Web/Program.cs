@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DistributedDebugger.Agent;
 using DistributedDebugger.Core.Models;
 using DistributedDebugger.Web;
 
