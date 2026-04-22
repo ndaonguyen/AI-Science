@@ -1,0 +1,21 @@
+  Determining projects to restore...
+C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Eval\DistributedDebugger.Eval.csproj : warning NU1603: DistributedDebugger.Tools depends on AWSSDK.SSOOIDC (>= 3.7.400.138) but AWSSDK.SSOOIDC 3.7.400.138 was not found. AWSSDK.SSOOIDC 3.7.401 was resolved instead.
+C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Tools\DistributedDebugger.Tools.csproj : warning NU1603: DistributedDebugger.Tools depends on AWSSDK.SSOOIDC (>= 3.7.400.138) but AWSSDK.SSOOIDC 3.7.400.138 was not found. AWSSDK.SSOOIDC 3.7.401 was resolved instead. [C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Eval\DistributedDebugger.Eval.csproj]
+  All projects are up-to-date for restore.
+C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Eval\DistributedDebugger.Eval.csproj : warning NU1603: DistributedDebugger.Tools depends on AWSSDK.SSOOIDC (>= 3.7.400.138) but AWSSDK.SSOOIDC 3.7.400.138 was not found. AWSSDK.SSOOIDC 3.7.401 was resolved instead.
+C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Tools\DistributedDebugger.Tools.csproj : warning NU1603: DistributedDebugger.Tools depends on AWSSDK.SSOOIDC (>= 3.7.400.138) but AWSSDK.SSOOIDC 3.7.400.138 was not found. AWSSDK.SSOOIDC 3.7.401 was resolved instead.
+  DistributedDebugger.Core -> C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Core\bin\Debug\net9.0\DistributedDebugger.Core.dll
+  DistributedDebugger.Agent -> C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Agent\bin\Debug\net9.0\DistributedDebugger.Agent.dll
+  DistributedDebugger.Tools -> C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Tools\bin\Debug\net9.0\DistributedDebugger.Tools.dll
+  DistributedDebugger.Eval -> C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Eval\bin\Debug\net9.0\DistributedDebugger.Eval.dll
+
+Build succeeded.
+
+C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Eval\DistributedDebugger.Eval.csproj : warning NU1603: DistributedDebugger.Tools depends on AWSSDK.SSOOIDC (>= 3.7.400.138) but AWSSDK.SSOOIDC 3.7.400.138 was not found. AWSSDK.SSOOIDC 3.7.401 was resolved instead.
+C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Tools\DistributedDebugger.Tools.csproj : warning NU1603: DistributedDebugger.Tools depends on AWSSDK.SSOOIDC (>= 3.7.400.138) but AWSSDK.SSOOIDC 3.7.400.138 was not found. AWSSDK.SSOOIDC 3.7.401 was resolved instead. [C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Eval\DistributedDebugger.Eval.csproj]
+C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Eval\DistributedDebugger.Eval.csproj : warning NU1603: DistributedDebugger.Tools depends on AWSSDK.SSOOIDC (>= 3.7.400.138) but AWSSDK.SSOOIDC 3.7.400.138 was not found. AWSSDK.SSOOIDC 3.7.401 was resolved instead.
+C:\MINE\AI-Science\DistributedDebugger\src\DistributedDebugger.Tools\DistributedDebugger.Tools.csproj : warning NU1603: DistributedDebugger.Tools depends on AWSSDK.SSOOIDC (>= 3.7.400.138) but AWSSDK.SSOOIDC 3.7.400.138 was not found. AWSSDK.SSOOIDC 3.7.401 was resolved instead.
+    4 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:03.80
