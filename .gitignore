@@ -138,3 +138,17 @@ DistributedDebugger/src/DistributedDebugger.Agent/bin/Debug/net9.0/DistributedDe
 DistributedDebugger/src/DistributedDebugger.Agent/bin/Debug/net9.0/DistributedDebugger.Agent.dll
 DistributedDebugger/src/DistributedDebugger.Agent/bin/Debug/net9.0/DistributedDebugger.Agent.deps.json
 DistributedDebugger/.idea/.idea.DistributedDebugger/.idea/indexLayout.xml
+DistributedDebugger/src/DistributedDebugger.Eval/obj/Debug/net9.0/.NETCoreApp,Version=v9.0.AssemblyAttributes.cs
+DistributedDebugger/src/DistributedDebugger.Eval/obj/Debug/net9.0/DistributedDebugger.Eval.AssemblyInfo.cs
+DistributedDebugger/src/DistributedDebugger.Eval/obj/Debug/net9.0/DistributedDebugger.Eval.AssemblyInfoInputs.cache
+DistributedDebugger/src/DistributedDebugger.Eval/obj/Debug/net9.0/DistributedDebugger.Eval.assets.cache
+DistributedDebugger/src/DistributedDebugger.Eval/obj/Debug/net9.0/DistributedDebugger.Eval.csproj.AssemblyReference.cache
+DistributedDebugger/src/DistributedDebugger.Eval/obj/Debug/net9.0/DistributedDebugger.Eval.GeneratedMSBuildEditorConfig.editorconfig
+DistributedDebugger/src/DistributedDebugger.Eval/obj/Debug/net9.0/DistributedDebugger.Eval.GlobalUsings.g.cs
+DistributedDebugger/src/DistributedDebugger.Eval/obj/DistributedDebugger.Eval.csproj.nuget.dgspec.json
+DistributedDebugger/src/DistributedDebugger.Eval/obj/DistributedDebugger.Eval.csproj.nuget.g.props
+DistributedDebugger/src/DistributedDebugger.Eval/obj/DistributedDebugger.Eval.csproj.nuget.g.targets
+DistributedDebugger/src/DistributedDebugger.Eval/obj/project.assets.json
+DistributedDebugger/src/DistributedDebugger.Eval/obj/project.nuget.cache
+DistributedDebugger/src/DistributedDebugger.Eval/obj/project.packagespec.json
+DistributedDebugger/src/DistributedDebugger.Eval/obj/rider.project.restore.info
