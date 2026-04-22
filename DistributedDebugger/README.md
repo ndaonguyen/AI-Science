@@ -1,117 +1,108 @@
 # DistributedDebugger
 
-AI-powered bug investigator for distributed microservice systems.
+AI-powered bug investigator for distributed microservice systems, with a full evaluation harness.
 
-You describe a bug — or paste in a Jira ticket — and an agent does the grunt work of pulling logs, checking MongoDB/OpenSearch/Kafka state, and producing a structured root-cause report. Built to practice **harness engineering** and **RAG** on a real problem: investigating bugs across a stack of microservices where the cause can be anywhere.
+You describe a bug, the agent investigates it by pulling logs and asking you targeted questions about MongoDB/OpenSearch/Kafka state, and produces a structured root-cause report. The eval harness replays recorded bugs through the same agent to measure whether prompt/model/tool changes make things better or worse over time.
 
-## Status: Phase 3 (human-in-the-loop data tools)
+## Status: Phase 4 (harness complete)
 
-What works today:
+The system is now end-to-end: it can investigate live bugs AND measure its own accuracy via a regression suite.
 
-- ReAct loop with OpenAI (`gpt-4o-mini` by default)
-- Freeform bug description via `--desc` or `--desc-file`, optional `--ticket` id
-- Tools:
-  - `search_logs` — **real CloudWatch Logs** via AWS SDK (SSO-aware), with a 4-stage RAG pipeline
-  - `request_mongo_query` — agent formulates a MongoDB find; you run it and paste the result
-  - `request_opensearch_query` — same pattern for OpenSearch Query DSL
-  - `request_kafka_events` — same pattern for Kafka (any env, any UI you have)
-  - `record_hypothesis` — agent declares a working theory, added to the trace
-  - `finish_investigation` — typed root-cause report
-- Three swappable retrievers for logs: `keyword`, `semantic`, `hybrid` (default)
-- `--mock` flag to bypass CloudWatch for free iteration on prompts
+### Live investigation (from Phase 1-3)
 
-## Why human-in-the-loop for Mongo/OpenSearch/Kafka?
+- ReAct loop with OpenAI (`gpt-4o-mini` default)
+- Freeform bug description or Jira ticket id
+- Tools: CloudWatch log search (RAG-filtered), plus human-in-the-loop `request_mongo_query`, `request_opensearch_query`, `request_kafka_events`
+- Three retrievers: `keyword`, `semantic`, `hybrid`
 
-Direct programmatic access to those systems is usually (and rightly) locked down in mature engineering orgs. The agent **describes** what data it wants to see, the CLI renders the exact query in a clearly-boxed prompt, and you paste the result back. The agent continues with the new evidence.
+### Evaluation harness (new in Phase 4)
 
-This is better than direct access for three reasons:
+- **Eval cases** — YAML files in `eval-cases/` describing a past bug, its ground truth, and pre-recorded tool responses
+- **Scripted tools** — `ScriptedLogTool` + `ScriptedHumanDataProvider` stand in for CloudWatch / human prompts during eval runs, so regressions are deterministic
+- **LLM-as-judge grader** — `gpt-4o` compares the agent's investigation against ground truth on four axes: cause correctness, service coverage, keyword coverage, confidence appropriateness
+- **Regression runner** — runs cases × configs, prints a leaderboard, writes CSV results for diffing across runs
 
-1. **Works across all environments** — test, staging, live — with zero credentials
-2. **You stay in control** — every query is reviewed before anything runs
-3. **Better prompt engineering pressure** — the agent learns to ask *narrow, specific* questions, because you won't run a "dump everything" query
+## Quick start
 
-## The UX flow
+```bash
+aws sso login                           # for live investigation only
+export OPENAI_API_KEY=sk-...
+
+cd DistributedDebugger
+
+# Live investigation (costs ~$0.001–0.002 + your paste-in time)
+dotnet run --project src/DistributedDebugger.Cli -- investigate \
+  --ticket COCO-1234 \
+  --desc "Activity act-789 published at 14:27 UTC but not in content search"
+
+# Regression suite — compare configs across all eval cases
+dotnet run --project src/DistributedDebugger.Cli -- eval \
+  --config baseline --config big-model
+```
+
+Example eval output:
 
 ```
-[iter 4] 🔧 request_mongo_query (awaiting your input below)
+Loading eval cases from eval-cases...
+Loaded 2 case(s). Running against 2 config(s). Judge model: gpt-4o.
 
-┌─ Manual data request ──────────────────────────────────
-│ Source: MongoDB  (suggested env: staging)
-│ Reason: Need to confirm activity was actually published
-├─ Query ────────────────────────────────────────────────
-│ db.activities.find(
-│     {
-│       "_id": "act-789"
-│     },
-│     {
-│       "status": 1,
-│       "isEpContent": 1,
-│       "publishedAt": 1
-│     }
-│   ).limit(1)
-└────────────────────────────────────────────────────────
+  ✓ [baseline   ] opensearch-indexing-dlq-missing          cause=yes svc=1.00 iter=8  ...
+  ✓ [baseline   ] mongo-flag-mismatch-content-hidden       cause=yes svc=0.50 iter=6  ...
+  ✓ [big-model  ] opensearch-indexing-dlq-missing          cause=yes svc=1.00 iter=5  ...
+  ✓ [big-model  ] mongo-flag-mismatch-content-hidden       cause=yes svc=1.00 iter=5  ...
 
-Paste the result below. Type 'END' on its own line when done,
-or 'empty' if no match, or 'skip' to decline. Ctrl+C to abort.
-> [{"_id": "act-789", "status": "published", ... }]
-> END
-
-  [iter 4] ✓ MongoDB result: ...
+Leaderboard (by config):
+  Config         Pass         SvcCov  AvgIter  Tokens (in/out/judge)
+  --------------------------------------------------------------------------
+  big-model      2/2 (100%)   1.00    5.0      12400/800/3200
+  baseline       2/2 (100%)   0.75    7.0      11200/700/3100
 ```
+
+## Adding a new eval case
+
+Every bug you investigate becomes a test case:
+
+1. Run `investigate` as normal on the real bug.
+2. Once you're happy with the answer, capture the key evidence the agent needed: which logs, which Mongo/OpenSearch/Kafka responses.
+3. Create a new YAML file in `eval-cases/` with the case description, ground truth, and the scripted responses.
+4. Run `debugger eval` — new case is automatically picked up.
+
+Over time your suite becomes a regression safety net: any change to prompts, tools, or models can be measured against past bugs before shipping.
+
+See `eval-cases/opensearch-indexing-dlq-missing.yaml` for the full schema.
 
 ## Architecture
 
 ```
 DistributedDebugger.Core
-  ├─ Models/                   domain records
-  └─ Tools/
-     ├─ IDebugTool.cs          tool contract
-     └─ IHumanDataProvider.cs  NEW: bridge for agent ↔ human
+  ├─ Models/                   domain records (BugReport, Investigation, RootCauseReport)
+  └─ Tools/                    IDebugTool, IHumanDataProvider
 
 DistributedDebugger.Tools
-  ├─ CloudWatch/               real Datadog-free log search + RAG retrievers
-  └─ HumanLoop/                NEW: request_{mongo,opensearch,kafka} tools
+  ├─ CloudWatch/               real CloudWatch log search + RAG retrievers
+  ├─ HumanLoop/                request_{mongo,opensearch,kafka} tools
+  └─ FinishInvestigationTool, RecordHypothesisTool, MockLogSearchTool
 
-DistributedDebugger.Agent      ReAct loop (OpenAI)
+DistributedDebugger.Agent      ReAct loop (OpenAI gpt-4o-mini)
+
+DistributedDebugger.Eval       NEW in Phase 4
+  ├─ EvalCase.cs               case + ground truth models
+  ├─ YamlCaseLoader.cs         parses eval-cases/*.yaml
+  ├─ Tools/                    scripted replacements for eval runs
+  ├─ LlmAsJudgeGrader.cs       gpt-4o judge with deterministic pre-checks
+  └─ RegressionRunner.cs       cases × configs → leaderboard
 
 DistributedDebugger.Cli
-  ├─ Program.cs                entry point
+  ├─ Program.cs                subcommand dispatch (investigate / eval)
+  ├─ EvalCommand.cs            eval subcommand handler
   ├─ ReportWriter.cs           markdown renderer
-  └─ ConsoleHumanDataProvider  NEW: stdin implementation of IHumanDataProvider
+  └─ ConsoleHumanDataProvider  stdin impl of IHumanDataProvider
 ```
-
-## What's next
-
-| Phase | Feature |
-|---|---|
-| 4 | LLM-as-judge grader to evaluate investigation quality |
-| 4 | Regression suite — run past bugs through the agent and check root-cause accuracy |
-| 4 | Cost/quality dashboard comparing retrievers, models, prompts |
-
-## Quick start
-
-```bash
-aws sso login           # one-time per SSO session
-export OPENAI_API_KEY=sk-...
-
-cd DistributedDebugger
-
-# Free, no AWS, no paste-in — for iterating on prompts
-dotnet run --project src/DistributedDebugger.Cli -- investigate --mock \
-  --desc "Activity act-789 published at 14:27 UTC but not in content search"
-
-# Real CloudWatch + human-loop for Mongo/OpenSearch/Kafka
-dotnet run --project src/DistributedDebugger.Cli -- investigate \
-  --ticket COCO-1234 \
-  --desc "Activity act-789 published at 14:27 UTC but not in content search"
-```
-
-When the agent calls `request_*`, the CLI pauses and shows you the query. Paste the result, type `END`, and the investigation continues.
 
 ## Cost
 
-Per real investigation with `gpt-4o-mini` + `text-embedding-3-small`:
-- ~8 model iterations, 2-3 manual query requests → ~$0.001–0.002 in API cost
-- Your time: 1-2 minutes to run the requested queries
+**One investigation**: ~$0.001–0.002 (gpt-4o-mini + embeddings if hybrid)
 
-Compare with an unassisted investigation of the same bug: typically 30 min to a few hours.
+**One eval run over 2 cases × 2 configs**: ~$0.02–0.05 (gpt-4o judge dominates, so running with many cases scales roughly linearly with the judge-token column)
+
+Run `debugger eval --config baseline` as a cheap smoke test any time you tweak the system prompt or a tool description. The judge is the expensive part — swap to `gpt-4o-mini` as judge for faster / cheaper iteration, and use `gpt-4o` before merging.
