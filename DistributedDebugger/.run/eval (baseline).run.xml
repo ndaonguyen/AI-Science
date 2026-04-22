@@ -1,0 +1,13 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="eval (baseline)" type="DotNetProject" factoryName=".NET Project">
+    <option name="EXE_PATH" value="$PROJECT_DIR$/src/DistributedDebugger.Cli/DistributedDebugger.Cli.csproj" />
+    <option name="PROGRAM_PARAMETERS" value="eval --config baseline" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="PASS_PARENT_ENVS" value="1" />
+    <envs>
+      <env name="OPENAI_API_KEY" value="" />
+    </envs>
+    <method v="2" />
+  </configuration>
+</component>
+
