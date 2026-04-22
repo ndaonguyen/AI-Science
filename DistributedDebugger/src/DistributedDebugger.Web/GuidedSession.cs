@@ -25,7 +25,7 @@ namespace DistributedDebugger.Web;
 /// we keep the same Channel-based WebHumanDataProvider from the autonomous
 /// path and just reuse it here.
 /// </summary>
-public sealed class GuidedSession
+public sealed class GuidedSession : IDisposable
 {
     public string Id { get; }
     public Channel<SessionEvent> AgentEvents { get; } = Channel.CreateUnbounded<SessionEvent>();
@@ -48,6 +48,11 @@ public sealed class GuidedSession
     // racing two concurrent model calls against the same history.
     public bool TurnInProgress { get; set; }
 
+    // Per-turn cancellation. Set at the start of each /api/guided/step call
+    // and exposed so /api/guided/cancel can request graceful abort. Swapped
+    // out between turns so cancelling one turn never affects the next.
+    public CancellationTokenSource? CurrentTurnCts { get; set; }
+
     public GuidedSession(
         string id,
         GuidedAgent agent,
@@ -67,6 +72,31 @@ public sealed class GuidedSession
         FinalReportMarkdown = markdown;
         IsComplete = true;
         AgentEvents.Writer.TryComplete();
+    }
+
+    /// <summary>
+    /// Clean up any IDisposable tools held by the registry. Required because
+    /// CloudWatchLogSearchTool holds per-region AWS clients — leaving them
+    /// alive across many sessions burns sockets and memory.
+    ///
+    /// Safe to call multiple times.
+    /// </summary>
+    public void Dispose()
+    {
+        CurrentTurnCts?.Cancel();
+        CurrentTurnCts?.Dispose();
+        CurrentTurnCts = null;
+
+        foreach (var tool in ToolRegistry.All)
+        {
+            if (tool is IDisposable d)
+            {
+                try { d.Dispose(); } catch { /* don't fail teardown on a misbehaving tool */ }
+            }
+        }
+
+        AgentEvents.Writer.TryComplete();
+        PasteResponses.Writer.TryComplete();
     }
 }
 
@@ -92,9 +122,15 @@ public sealed class GuidedSessionRegistry
     private void PruneOld()
     {
         if (_sessions.Count < 32) return;
-        foreach (var kv in _sessions)
+        // Snapshot via ToArray so we don't enumerate the ConcurrentDictionary
+        // while mutating it. Dispose evicted sessions so their AWS clients
+        // don't leak.
+        foreach (var kv in _sessions.ToArray())
         {
-            if (kv.Value.IsComplete) _sessions.TryRemove(kv.Key, out _);
+            if (kv.Value.IsComplete && _sessions.TryRemove(kv.Key, out var removed))
+            {
+                removed.Dispose();
+            }
         }
     }
 }

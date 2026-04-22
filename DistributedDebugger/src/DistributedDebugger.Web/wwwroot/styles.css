@@ -227,6 +227,30 @@ select {
 .turn-summary ul { margin: 0; padding-left: 20px; }
 .turn-summary li { margin-bottom: 4px; font-size: 14px; }
 
+/* "Running turn…" indicator + Cancel button sit side by side. Hidden as a
+   block when idle (via .hidden), shown as flex when the turn is active. */
+.running-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+}
+.running-row.hidden { display: none; }
+.running-row #running-indicator {
+  margin: 0;
+  font-style: italic;
+}
+.running-row #running-indicator::before {
+  content: "●";
+  color: var(--warn);
+  margin-right: 6px;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+
 .next-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 .next-buttons button.suggested {
   outline: 2px solid var(--warn);

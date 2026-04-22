@@ -38,6 +38,17 @@ const $findings = document.getElementById('findings');
 const $nextButtons = document.querySelector('.next-buttons');
 const $moreLogsPanel = document.getElementById('more-logs-panel');
 const $runningIndicator = document.getElementById('running-indicator');
+const $runningRow = document.getElementById('running-row');
+const $cancelTurnBtn = document.getElementById('cancelTurnBtn');
+
+$cancelTurnBtn.addEventListener('click', async () => {
+  if (!state.sessionId) return;
+  $cancelTurnBtn.disabled = true;
+  $cancelTurnBtn.textContent = 'Cancelling…';
+  try {
+    await fetch(`/api/guided/cancel/${state.sessionId}`, { method: 'POST' });
+  } catch { /* ignore; the UI will unstick via turn_cancelled SSE or the pending fetch's rejection */ }
+});
 
 // ---- wiring ----
 document.querySelectorAll('input[name=mode]').forEach(r =>
@@ -348,7 +359,7 @@ function subscribe(sessionId) {
     $turnSummary.classList.add('hidden');
     $moreLogsPanel.classList.add('hidden');
     document.getElementById('dig-errors-panel').classList.add('hidden');
-    $runningIndicator.classList.remove('hidden');
+    showRunning(true);
     // Visual divider so the new turn's events are clearly separated
     const sep = document.createElement('div');
     sep.className = 'turn-divider';
@@ -356,8 +367,16 @@ function subscribe(sessionId) {
     $events.appendChild(sep);
   });
   es.addEventListener('turn_summary', e => {
-    $runningIndicator.classList.add('hidden');
+    showRunning(false);
     showTurnSummary(JSON.parse(e.data));
+  });
+  es.addEventListener('turn_cancelled', e => {
+    showRunning(false);
+    const d = e.data ? JSON.parse(e.data) : { message: 'Turn cancelled.' };
+    appendLine('error', '■ cancelled', d.message || 'Turn cancelled.');
+    // Re-show the "What next?" panel so the user can continue — turn_summary
+    // never fires on a cancelled turn.
+    $turnSummary.classList.remove('hidden');
   });
 }
 
@@ -401,8 +420,20 @@ function disableNextButtons(disabled) {
   $nextButtons.querySelectorAll('button').forEach(b => b.disabled = disabled);
 }
 
+/// Show or hide the "Running turn…" indicator + Cancel button. Centralised
+/// so every code path that kicks off or ends a turn flips the same thing.
+function showRunning(isRunning) {
+  if (isRunning) {
+    $runningRow.classList.remove('hidden');
+    $cancelTurnBtn.disabled = false;
+    $cancelTurnBtn.textContent = 'Cancel';
+  } else {
+    $runningRow.classList.add('hidden');
+  }
+}
+
 function showTurnSummary(data) {
-  $runningIndicator.classList.add('hidden');
+  showRunning(false);
 
   // Append a permanent summary card to the events stream — never overwritten.
   const card = document.createElement('div');
