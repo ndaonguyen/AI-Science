@@ -161,6 +161,103 @@ public sealed class GuidedAgent
         return history;
     }
 
+    /// <summary>
+    /// Produce a narrative markdown report that synthesises the whole
+    /// investigation — not just the last turn. We ask the LLM (no tools
+    /// available, temperature 0) to write the report given the full chat
+    /// history, so it naturally pulls together evidence across every step
+    /// the user drove.
+    ///
+    /// On failure returns a reasonable deterministic fallback built from
+    /// the last step, so we never leave the user without SOMETHING.
+    /// </summary>
+    public async Task<string> BuildFinalReportAsync(
+        IList<ChatMessage> history,
+        BugReport report,
+        GuidedStepResult lastStep,
+        CancellationToken ct = default)
+    {
+        var prompt =
+            "The investigation is complete. Write a clear, concise markdown report " +
+            "summarising everything we learned, drawing from the whole conversation — " +
+            "not just the last turn. Structure it as:\n\n" +
+            "# Bug Investigation" +
+            (string.IsNullOrWhiteSpace(report.TicketId) ? "" : $" — {report.TicketId}") + "\n\n" +
+            "## Description\n(one-line recap of what the bug was)\n\n" +
+            "## What we investigated\n" +
+            "(bulleted timeline: which services/logs, Mongo/OpenSearch/Kafka checks, " +
+            "each with the key finding — 1 line per step)\n\n" +
+            "## Root cause\n" +
+            "(the most confident explanation, grounded in evidence actually gathered)\n\n" +
+            "## Affected services\n- service-a\n- service-b\n\n" +
+            "## Evidence\n(bulleted list of the concrete log lines, documents, or absences " +
+            "that support the root cause)\n\n" +
+            "## Suggested fix\n(1-3 sentences — skip if unclear)\n\n" +
+            "Do NOT hallucinate facts we didn't gather. If something is uncertain, say so. " +
+            "Return markdown only, no code fences around the whole thing.";
+
+        // Use a throwaway copy of history so our synthesis prompt doesn't pollute
+        // the session's real history (in case the user starts a new turn later).
+        var localHistory = new List<ChatMessage>(history) { new UserChatMessage(prompt) };
+
+        try
+        {
+            var client = new ChatClient(model: _model, apiKey: _apiKey);
+            var options = new ChatCompletionOptions { Temperature = 0f };
+            var response = await client.CompleteChatAsync(localHistory, options, ct);
+            var text = response.Value.Content.Count > 0
+                ? response.Value.Content[0].Text ?? ""
+                : "";
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                return StripOuterFence(text);
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch
+        {
+            // fall through to deterministic fallback
+        }
+
+        return BuildFallbackReport(report, lastStep);
+    }
+
+    private static string StripOuterFence(string s)
+    {
+        // Some models wrap the whole report in ```markdown ... ``` even when
+        // told not to. Strip it so the renderer shows prose, not a code block.
+        var t = s.Trim();
+        if (t.StartsWith("```"))
+        {
+            var nl = t.IndexOf('\n');
+            if (nl > 0) t = t[(nl + 1)..];
+            if (t.EndsWith("```")) t = t[..^3];
+        }
+        return t.Trim();
+    }
+
+    private static string BuildFallbackReport(BugReport report, GuidedStepResult lastStep)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("# Bug Investigation" +
+            (string.IsNullOrWhiteSpace(report.TicketId) ? "" : $" — {report.TicketId}"));
+        sb.AppendLine();
+        sb.AppendLine("## Description");
+        sb.AppendLine(report.Description);
+        sb.AppendLine();
+        sb.AppendLine("## Final hypothesis");
+        sb.AppendLine(string.IsNullOrWhiteSpace(lastStep.Hypothesis) ? "(none)" : lastStep.Hypothesis);
+        if (lastStep.Findings.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("## Key findings");
+            foreach (var f in lastStep.Findings) sb.AppendLine($"- {f}");
+        }
+        sb.AppendLine();
+        sb.AppendLine("_(LLM synthesis failed; this is a fallback summary of the last turn.)_");
+        return sb.ToString();
+    }
+
     private const string SystemPrompt = """
         You are a distributed systems debugger investigating a bug in EP's CoCo
         platform (content microservices backed by MongoDB, OpenSearch, and Kafka,

@@ -238,6 +238,12 @@ app.MapPost("/api/guided/step/{sessionId}",
     }
     session.TurnInProgress = true;
 
+    // Link the HTTP request's token with a fresh per-turn CTS so /api/guided/cancel
+    // can abort this specific turn. The linked token cancels if EITHER the HTTP
+    // request is abandoned OR the cancel endpoint fires.
+    var turnCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+    session.CurrentTurnCts = turnCts;
+
     try
     {
         var instruction = BuildInstruction(req);
@@ -245,18 +251,13 @@ app.MapPost("/api/guided/step/{sessionId}",
         // Push a user-visible "turn_started" event so the event feed has
         // context for the tool calls that follow.
         await session.AgentEvents.Writer.WriteAsync(new SessionEvent("turn_started",
-            new { action = req.Action, instruction }));
+            new { action = req.Action, instruction }), turnCts.Token);
 
         var step = await session.Agent.RunStepAsync(
             session.History,
             instruction,
-            onEvent: ev =>
-            {
-                // Forward structured trace events to the browser. Same mapping
-                // as in the autonomous launcher.
-                session.AgentEvents.Writer.TryWrite(MapTraceEvent(ev));
-            },
-            ct: ct);
+            onEvent: ev => session.AgentEvents.Writer.TryWrite(MapTraceEvent(ev)),
+            ct: turnCts.Token);
 
         await session.AgentEvents.Writer.WriteAsync(new SessionEvent("turn_summary",
             new
@@ -266,15 +267,20 @@ app.MapPost("/api/guided/step/{sessionId}",
                 suggestedNext = step.SuggestedNext,
                 inputTokens = step.InputTokens,
                 outputTokens = step.OutputTokens,
-            }));
+            }), turnCts.Token);
 
-        // If the turn's action was "finish", also persist a markdown report.
+        // If the turn's action was "finish", build the final narrative report,
+        // mark the session complete, and dispose held tool resources.
         if (string.Equals(req.Action, "finish", StringComparison.OrdinalIgnoreCase))
         {
-            var md = BuildGuidedReport(session, step);
+            var md = await BuildGuidedReportAsync(session, step, turnCts.Token);
             session.Complete(md);
             await session.AgentEvents.Writer.WriteAsync(new SessionEvent("completed",
                 new { markdown = md, status = "Completed" }));
+
+            // Release AWS clients etc. The session object stays in the registry
+            // so late SSE subscribers can still see the final report.
+            session.Dispose();
         }
 
         return Results.Ok(new
@@ -283,6 +289,14 @@ app.MapPost("/api/guided/step/{sessionId}",
             hypothesis = step.Hypothesis,
             suggestedNext = step.SuggestedNext,
         });
+    }
+    catch (OperationCanceledException)
+    {
+        // Cancellation is a normal outcome — emit an SSE event so the UI can
+        // unstick itself, and respond 200 rather than 500.
+        await session.AgentEvents.Writer.WriteAsync(new SessionEvent("turn_cancelled",
+            new { message = "Turn was cancelled." }));
+        return Results.Ok(new { status = "cancelled" });
     }
     catch (Exception ex)
     {
@@ -293,7 +307,26 @@ app.MapPost("/api/guided/step/{sessionId}",
     finally
     {
         session.TurnInProgress = false;
+        session.CurrentTurnCts = null;
+        turnCts.Dispose();
     }
+});
+
+// Cancel an in-flight guided turn. Safe to call when nothing's running —
+// returns 200 either way so the UI can always fire this without checking state.
+app.MapPost("/api/guided/cancel/{sessionId}",
+    (string sessionId, GuidedSessionRegistry reg) =>
+{
+    var session = reg.Get(sessionId);
+    if (session is null) return Results.NotFound(new { error = "unknown session" });
+
+    // Copy then null to avoid racing with the finally block that disposes it.
+    var cts = session.CurrentTurnCts;
+    if (cts is not null)
+    {
+        try { cts.Cancel(); } catch { /* already disposed — fine */ }
+    }
+    return Results.Ok(new { cancelled = cts is not null });
 });
 
 app.Run();
@@ -381,31 +414,15 @@ static string BuildTimeRangeClause(GuidedStepContext? ctx)
 }
 
 /// <summary>
-/// Build a final markdown report when the user hits "finish". We draw from
-/// the session history rather than the agent's structured RootCauseReport —
-/// in guided mode the agent may have finished without calling the
-/// finish_investigation tool, so a history-based render is more reliable.
+/// Build the final markdown report by asking the LLM to synthesise the whole
+/// investigation (not just the last turn). Falls back to a deterministic
+/// last-turn summary if the LLM call fails.
 /// </summary>
-static string BuildGuidedReport(GuidedSession session, GuidedStepResult lastStep)
+static Task<string> BuildGuidedReportAsync(
+    GuidedSession session, GuidedStepResult lastStep, CancellationToken ct)
 {
-    var sb = new System.Text.StringBuilder();
-    sb.AppendLine("# Bug Investigation (guided)");
-    if (!string.IsNullOrWhiteSpace(session.Report.TicketId))
-        sb.AppendLine($"Ticket: **{session.Report.TicketId}**");
-    sb.AppendLine();
-    sb.AppendLine("## Description");
-    sb.AppendLine(session.Report.Description);
-    sb.AppendLine();
-    sb.AppendLine("## Final summary");
-    sb.AppendLine();
-    sb.AppendLine("**Hypothesis:** " + (string.IsNullOrWhiteSpace(lastStep.Hypothesis) ? "(none)" : lastStep.Hypothesis));
-    sb.AppendLine();
-    if (lastStep.Findings.Count > 0)
-    {
-        sb.AppendLine("**Key findings:**");
-        foreach (var f in lastStep.Findings) sb.AppendLine($"- {f}");
-    }
-    return sb.ToString();
+    return session.Agent.BuildFinalReportAsync(
+        session.History, session.Report, lastStep, ct);
 }
 
 /// <summary>
