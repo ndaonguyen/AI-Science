@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using DistributedDebugger.Agent;
 using DistributedDebugger.Cli;
 using DistributedDebugger.Core.Models;
+using DistributedDebugger.Core.Reporting;
 using DistributedDebugger.Core.Tools;
 using DistributedDebugger.Tools;
 using DistributedDebugger.Tools.CloudWatch;
