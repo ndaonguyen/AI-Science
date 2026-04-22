@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using DistributedDebugger.Eval.Internal;
 
 namespace DistributedDebugger.Eval;
 
@@ -84,7 +85,7 @@ public sealed class DashboardGenerator
         var rows = new List<RowData>(lines.Length - 1);
         for (int i = 1; i < lines.Length; i++)
         {
-            var fields = SplitCsvLine(lines[i]);
+            var fields = CsvLineSplitter.Split(lines[i]);
             if (fields.Count < 11) continue; // defensive skip
             rows.Add(new RowData(
                 ConfigName:    fields[0],
@@ -112,57 +113,6 @@ public sealed class DashboardGenerator
             FileName: Path.GetFileName(path),
             Timestamp: timestamp,
             Rows: rows);
-    }
-
-    /// <summary>
-    /// Minimal CSV split that respects double-quote wrapped fields containing
-    /// commas or escaped quotes. We wrote the CSV ourselves so we know the
-    /// escaping is simple; we don't need a full RFC-4180 parser.
-    /// </summary>
-    private static List<string> SplitCsvLine(string line)
-    {
-        var fields = new List<string>();
-        var sb = new StringBuilder();
-        bool inQuotes = false;
-
-        for (int i = 0; i < line.Length; i++)
-        {
-            var ch = line[i];
-            if (inQuotes)
-            {
-                if (ch == '"' && i + 1 < line.Length && line[i + 1] == '"')
-                {
-                    sb.Append('"');
-                    i++;
-                }
-                else if (ch == '"')
-                {
-                    inQuotes = false;
-                }
-                else
-                {
-                    sb.Append(ch);
-                }
-            }
-            else
-            {
-                if (ch == ',')
-                {
-                    fields.Add(sb.ToString());
-                    sb.Clear();
-                }
-                else if (ch == '"' && sb.Length == 0)
-                {
-                    inQuotes = true;
-                }
-                else
-                {
-                    sb.Append(ch);
-                }
-            }
-        }
-        fields.Add(sb.ToString());
-        return fields;
     }
 
     private static string BuildHtml(IReadOnlyList<RunData> runs)

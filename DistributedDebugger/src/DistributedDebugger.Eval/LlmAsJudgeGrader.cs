@@ -1,6 +1,6 @@
 using System.Text;
-using System.Text.Json;
 using DistributedDebugger.Core.Models;
+using DistributedDebugger.Eval.Internal;
 using OpenAI.Chat;
 
 namespace DistributedDebugger.Eval;
@@ -79,7 +79,7 @@ public sealed class LlmAsJudgeGrader
             ? response.Value.Content[0].Text ?? "{}"
             : "{}";
 
-        var parsed = ParseJudgeResponse(jsonText);
+        var parsed = JudgeResponseParser.Parse(jsonText);
 
         // Final pass/fail rule: it's a PASS only if the judge says the cause
         // is correct AND all must-mention keywords were hit AND no must-not-claim
@@ -166,52 +166,6 @@ public sealed class LlmAsJudgeGrader
 
         return sb.ToString();
     }
-
-    private static JudgeParsed ParseJudgeResponse(string raw)
-    {
-        // Strip a leading ```json / ``` fence and any trailing ``` if present.
-        // Also pull out the first { ... } block if the judge wrote preamble.
-        var trimmed = raw.Trim();
-        if (trimmed.StartsWith("```"))
-        {
-            var nl = trimmed.IndexOf('\n');
-            if (nl > 0) trimmed = trimmed[(nl + 1)..];
-            if (trimmed.EndsWith("```")) trimmed = trimmed[..^3];
-        }
-        var firstBrace = trimmed.IndexOf('{');
-        var lastBrace = trimmed.LastIndexOf('}');
-        if (firstBrace >= 0 && lastBrace > firstBrace)
-        {
-            trimmed = trimmed[firstBrace..(lastBrace + 1)];
-        }
-
-        try
-        {
-            using var doc = JsonDocument.Parse(trimmed);
-            var root = doc.RootElement;
-            return new JudgeParsed(
-                CauseCorrect: root.TryGetProperty("causeCorrect", out var c)
-                              && c.ValueKind == JsonValueKind.True,
-                ServiceCoverageScore: root.TryGetProperty("serviceCoverageScore", out var s)
-                              && s.ValueKind == JsonValueKind.Number
-                    ? s.GetDouble() : 0.0,
-                ConfidenceAppropriate: root.TryGetProperty("confidenceAppropriate", out var ca)
-                              && ca.ValueKind == JsonValueKind.True,
-                Rationale: root.TryGetProperty("rationale", out var r) ? r.GetString() ?? "" : "");
-        }
-        catch
-        {
-            // If the judge returns malformed JSON we default to failing the
-            // run; better than falsely passing.
-            return new JudgeParsed(false, 0, false, "Judge returned malformed JSON.");
-        }
-    }
-
-    private sealed record JudgeParsed(
-        bool CauseCorrect,
-        double ServiceCoverageScore,
-        bool ConfidenceAppropriate,
-        string Rationale);
 }
 
 public sealed record KeywordCheck(string Keyword, bool Present);
