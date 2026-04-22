@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>DistributedDebugger.Core</RootNamespace>
+    <AssemblyName>DistributedDebugger.Core</AssemblyName>
+  </PropertyGroup>
+</Project>
