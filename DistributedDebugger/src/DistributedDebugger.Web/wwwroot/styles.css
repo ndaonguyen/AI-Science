@@ -297,3 +297,69 @@ select {
 }
 button.small { padding: 5px 12px; font-size: 13px; }
 
+/* Filter text row */
+.filter-row { display: flex; gap: 8px; align-items: center; }
+.filter-row input[type=text] { flex: 1; }
+
+/* Raw log preview section */
+.raw-logs-section {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.raw-logs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f0f4ff;
+  border-bottom: 1px solid var(--border);
+}
+.raw-logs-title {
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #1a237e;
+  font-weight: 600;
+}
+.raw-logs-table {
+  max-height: 360px;
+  overflow-y: auto;
+  background: #1e1e2e;
+  padding: 8px 0;
+}
+.raw-log-row {
+  display: flex;
+  gap: 12px;
+  padding: 3px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  border-bottom: 1px solid #2a2a3e;
+}
+.raw-log-row:hover { background: #2a2a3e; }
+.raw-log-ts {
+  color: #7c9cbf;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.raw-log-msg {
+  color: #cdd6f4;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+.raw-log-msg mark {
+  background: #f9e05b;
+  color: #1e1e2e;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+.raw-logs-loading, .raw-logs-empty, .raw-logs-error {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: #888;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.raw-logs-error { color: #f38ba8; }
+

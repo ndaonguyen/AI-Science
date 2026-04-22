@@ -71,17 +71,37 @@ document.getElementById('more-logs-submit').addEventListener('click', () => {
   const services = Array.from($moreLogsPanel.querySelectorAll('input[type=checkbox]:checked'))
     .map(c => c.value);
   const env = document.getElementById('more-logs-env').value;
+  const filterText = document.getElementById('more-logs-filter').value.trim();
   if (services.length === 0) {
     alert('Pick at least one service to search.');
     return;
   }
   const { startTime, endTime } = resolveTimeRange('more-logs-preset', 'mlStartDate', 'mlStartTime', 'mlEndDate', 'mlEndTime');
   $moreLogsPanel.classList.add('hidden');
-  runStep('more_logs', { services, environment: env, startTime, endTime });
+  runStep('more_logs', { services, environment: env, startTime, endTime, filterText });
 });
 
 document.getElementById('more-logs-cancel').addEventListener('click', () => {
   $moreLogsPanel.classList.add('hidden');
+});
+
+document.getElementById('previewLogsBtn').addEventListener('click', previewLogs);
+
+document.getElementById('rawLogsClose').addEventListener('click', () => {
+  document.getElementById('rawLogsSection').classList.add('hidden');
+});
+
+document.getElementById('more-logs-preview').addEventListener('click', async () => {
+  const services = Array.from($moreLogsPanel.querySelectorAll('input[type=checkbox]:checked'))
+    .map(c => c.value);
+  const env = document.getElementById('more-logs-env').value;
+  const filter = document.getElementById('more-logs-filter').value.trim();
+  const { startTime, endTime } = resolveTimeRange('more-logs-preset','mlStartDate','mlStartTime','mlEndDate','mlEndTime');
+  if (services.length === 0) { alert('Pick at least one service.'); return; }
+  // Preview each service in sequence
+  for (const svc of services) {
+    await showRawLogs(svc, env, startTime, endTime, filter);
+  }
 });
 
 // ---- CloudWatch-style datetime picker ----
@@ -207,12 +227,21 @@ async function startInvestigation() {
     const services = Array.from(document.querySelectorAll('input[name=service]:checked'))
       .map(c => c.value);
     const environment = document.getElementById('environment').value;
+    const filterText  = document.getElementById('filterText').value.trim();
     if (services.length === 0) {
       alert('Pick at least one service to search.');
       return;
     }
     const { startTime, endTime } = resolveTimeRange('timePreset', 'startDate', 'startTimeInput', 'endDate', 'endTimeInput');
-    runStep('search_logs', { services, environment, startTime, endTime });
+
+    // If the user typed a filter, show raw preview first, then let AI run.
+    if (filterText && !document.getElementById('mock').checked) {
+      for (const svc of services) {
+        await showRawLogs(svc, environment, startTime, endTime, filterText);
+      }
+    }
+
+    runStep('search_logs', { services, environment, startTime, endTime, filterText });
   }
 }
 
@@ -392,6 +421,71 @@ function showReport(data) {
   const pre = document.createElement('pre');
   pre.textContent = data.markdown || '(no report)';
   $report.appendChild(pre);
+}
+
+// ---- raw log preview ----
+async function previewLogs() {
+  const services = Array.from(document.querySelectorAll('input[name=service]:checked'))
+    .map(c => c.value);
+  const environment = document.getElementById('environment').value;
+  const filterText  = document.getElementById('filterText').value.trim();
+  const { startTime, endTime } = resolveTimeRange('timePreset', 'startDate', 'startTimeInput', 'endDate', 'endTimeInput');
+
+  if (services.length === 0) { alert('Pick at least one service.'); return; }
+
+  for (const svc of services) {
+    await showRawLogs(svc, environment, startTime, endTime, filterText);
+  }
+}
+
+async function showRawLogs(service, environment, startTime, endTime, filterText) {
+  const $section = document.getElementById('rawLogsSection');
+  const $title   = document.getElementById('rawLogsTitle');
+  const $table   = document.getElementById('rawLogsTable');
+
+  $title.textContent = `Loading logs for ${service} …`;
+  $section.classList.remove('hidden');
+  $table.innerHTML = '<div class="raw-logs-loading">Fetching from CloudWatch…</div>';
+
+  try {
+    const res = await fetch('/api/logs/raw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ service, environment, startTime, endTime, filterText }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      $table.innerHTML = `<div class="raw-logs-error">Error: ${escape(data.detail || data.error || 'unknown')}</div>`;
+      return;
+    }
+
+    const { logGroup, count, events } = data;
+    $title.textContent = `${logGroup}  ·  ${count} matching event${count !== 1 ? 's' : ''}` +
+                         (filterText ? `  ·  filter: "${filterText}"` : '');
+
+    if (!events || events.length === 0) {
+      $table.innerHTML = '<div class="raw-logs-empty">No matching log events in this time window.</div>';
+      return;
+    }
+
+    // Build table rows — highlight the filter text in each message
+    const rows = events.map(ev => {
+      const msg = filterText
+        ? escape(ev.message).replace(
+            new RegExp(escape(filterText).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+            m => `<mark>${m}</mark>`)
+        : escape(ev.message);
+      return `<div class="raw-log-row">
+        <span class="raw-log-ts">${escape(ev.timestamp)}</span>
+        <span class="raw-log-msg">${msg}</span>
+      </div>`;
+    }).join('');
+
+    $table.innerHTML = rows;
+  } catch (err) {
+    $table.innerHTML = `<div class="raw-logs-error">Network error: ${escape(err.message)}</div>`;
+  }
 }
 
 // ---- utils ----

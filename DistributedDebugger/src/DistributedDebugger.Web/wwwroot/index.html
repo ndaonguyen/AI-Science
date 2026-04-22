@@ -98,6 +98,22 @@
             </div>
           </div>
         </label>
+        <label>
+          <span>Filter text <em>(CloudWatch keyword — optional)</em></span>
+          <div class="filter-row">
+            <input type="text" id="filterText" placeholder='e.g. "Unexpected Execution Error" or "act-789"'>
+            <button type="button" id="previewLogsBtn" class="secondary small">Preview logs</button>
+          </div>
+        </label>
+      </div>
+
+      <!-- Raw log preview (shown before AI turn) -->
+      <div id="rawLogsSection" class="raw-logs-section hidden">
+        <div class="raw-logs-header">
+          <span id="rawLogsTitle" class="raw-logs-title"></span>
+          <button type="button" id="rawLogsClose" class="secondary small">✕ Close</button>
+        </div>
+        <div id="rawLogsTable" class="raw-logs-table"></div>
       </div>
 
       <div class="row">
@@ -152,7 +168,11 @@
             </select>
             <span id="moreLogsRangeSummary" class="time-range-summary hidden"></span>
             <button type="button" id="more-logs-submit">Run search</button>
+            <button type="button" id="more-logs-preview" class="secondary">Preview logs</button>
             <button type="button" id="more-logs-cancel" class="secondary">Cancel</button>
+          </div>
+          <div class="filter-row" style="margin-top:8px">
+            <input type="text" id="more-logs-filter" placeholder='Filter text, e.g. "ERROR" or "act-789"'>
           </div>
           <div id="moreLogsCustomPanel" class="custom-range-panel hidden">
             <div class="custom-range-grid">

@@ -29,6 +29,40 @@ app.UseStaticFiles();
 
 // ---- API endpoints ----
 
+// Fetch raw matching CloudWatch log lines — no AI, no session needed.
+// Used by the UI to preview log results before starting an investigation.
+app.MapPost("/api/logs/raw", async (RawLogsRequest req, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Service) || string.IsNullOrWhiteSpace(req.Environment))
+        return Results.BadRequest(new { error = "service and environment are required" });
+
+    var logGroup = $"/{req.Environment.ToLowerInvariant()}/ecs/{req.Service.ToLowerInvariant()}";
+    var region = req.Environment.EndsWith("-ca-central-1", StringComparison.OrdinalIgnoreCase)
+        ? "ca-central-1" : "ap-southeast-2";
+    var profile = req.Environment.ToLowerInvariant() switch
+    {
+        "test"              => "dev",
+        "staging"           => "staging",
+        "live"              => "live",
+        "live-ca-central-1" => "live-ca",
+        _                   => "dev",
+    };
+
+    var end   = DateTimeOffset.TryParse(req.EndTime,   out var pe) ? pe : DateTimeOffset.UtcNow;
+    var start = DateTimeOffset.TryParse(req.StartTime, out var ps) ? ps : end.AddHours(-1);
+
+    try
+    {
+        var events = await RawLogFetcher.FetchAsync(
+            region, logGroup, profile, req.FilterText ?? "", start, end, limit: 200, ct);
+        return Results.Ok(new { logGroup, start, end, count = events.Count, events });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
 // Start an investigation. Returns { sessionId } which the browser then uses
 // to subscribe to /api/stream/{id} and post paste answers to /api/paste/{id}.
 app.MapPost("/api/investigate",
@@ -292,8 +326,9 @@ static string BuildInstruction(GuidedStepRequest req)
             $"Search CloudWatch logs in these services: {services}" +
             (env is not null ? $" (environment: {env})" : "") +
             BuildTimeRangeClause(ctx) +
+            (string.IsNullOrWhiteSpace(ctx?.FilterText) ? "" : $" using filterPattern \"{ctx!.FilterText}\"") +
             ". Use the bug description from earlier as the search focus. " +
-            "IMPORTANT: You MUST use exactly the startTime and endTime values specified above — do NOT invent or adjust the time window. " +
+            "IMPORTANT: You MUST use exactly the startTime, endTime, and filterPattern values specified above — do NOT invent or adjust them. " +
             "If multiple services are listed, make one search_logs call per service.",
 
         "mongo" =>

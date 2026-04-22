@@ -218,4 +218,5 @@ public sealed record GuidedStepContext(
     string? Environment = null,
     string? FreeText = null,
     string? StartTime = null,
-    string? EndTime = null);
+    string? EndTime = null,
+    string? FilterText = null);
