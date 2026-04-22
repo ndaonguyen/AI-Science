@@ -131,50 +131,20 @@
         <button id="newBtn" type="button" class="secondary">New investigation</button>
       </div>
 
-      <!-- Scrollable area: events + raw logs + per-turn summaries -->
+      <!-- Scrollable area: events + raw logs + per-turn summaries + action panels -->
       <div class="run-scroll-area">
         <div id="events"></div>
 
-        <!-- Raw log preview inside investigation -->
-        <div id="run-raw-logs-section" class="raw-logs-section hidden">
-          <div class="raw-logs-header">
-            <span id="run-raw-logs-title" class="raw-logs-title"></span>
-            <button type="button" id="run-raw-logs-close" class="secondary small">✕ Close</button>
-          </div>
-          <div class="raw-logs-hint">💡 Click any row to view detail — then dig into errors at that timestamp</div>
-          <div id="run-raw-logs-table" class="raw-logs-table"></div>
-        </div>
-      </div>
-
-      <!-- Sticky footer: What next? always visible at the bottom -->
-      <div class="run-sticky-footer">
-        <div id="turn-summary" class="turn-summary hidden">
-        <h3>Summary</h3>
-        <div class="hypothesis"><strong>Hypothesis:</strong> <span id="hypothesis-text"></span></div>
-        <ul id="findings"></ul>
-        <h4>What next?</h4>
-        <div class="next-buttons">
-          <button type="button" data-action="mongo">Check MongoDB</button>
-          <button type="button" data-action="opensearch">Check OpenSearch</button>
-          <button type="button" data-action="kafka">Check Kafka</button>
-          <button type="button" data-action="more_logs" class="secondary">Search more logs</button>
-          <button type="button" data-action="dig_errors" class="secondary">🔍 Dig into errors at timestamp</button>
-          <button type="button" data-action="finish" class="secondary">Finish — give me the report</button>
-        </div>
-
-        <!-- Dig into errors panel -->
+        <!-- Dig into errors panel — lives in scroll area so it can expand freely -->
         <div id="dig-errors-panel" class="more-logs-panel hidden">
           <div class="dig-errors-header">
             <strong>🔍 Dig into errors at timestamp</strong>
             <small>Pick a log row from the preview below — timestamp and environment are filled automatically. Adjust the window and keywords, then preview or analyze.</small>
           </div>
-
-          <!-- Read-only: populated when user clicks a log row -->
           <div class="dig-locked-row">
             <div class="dig-locked-field">
               <div class="custom-range-label">Selected timestamp (UTC)</div>
               <div id="dig-ts-display" class="dig-locked-value">— click a log row below —</div>
-              <!-- hidden inputs carry the actual values for getDigParams() -->
               <input type="hidden" id="dig-ts-iso">
             </div>
             <div class="dig-locked-field">
@@ -183,7 +153,6 @@
               <input type="hidden" id="dig-env-val">
             </div>
           </div>
-
           <div class="dig-errors-grid" style="margin-top:12px">
             <div>
               <div class="custom-range-label">Window around timestamp</div>
@@ -205,7 +174,6 @@
               </div>
             </div>
           </div>
-
           <div class="custom-range-label" style="margin-top:12px">Error keywords</div>
           <div class="checkbox-group" id="dig-keywords" style="margin-top:4px;flex-wrap:wrap">
             <label class="checkbox"><input type="checkbox" value="Exception" checked><span>Exception</span></label>
@@ -223,13 +191,14 @@
             <label class="checkbox"><input type="checkbox" value="Unhandled"><span>Unhandled</span></label>
             <label class="checkbox"><input type="checkbox" value="unauthorized"><span>unauthorized</span></label>
           </div>
-
           <div class="row" style="margin-top:12px;gap:8px">
             <button type="button" id="dig-preview" class="secondary small">Preview matching logs</button>
             <button type="button" id="dig-analyze">Analyze with AI</button>
             <button type="button" id="dig-cancel" class="secondary small">Cancel</button>
           </div>
         </div>
+
+        <!-- More logs panel — also in scroll area -->
         <div id="more-logs-panel" class="more-logs-panel hidden">
           <div class="checkbox-group" id="more-logs-services">
             <label class="checkbox"><input type="checkbox" value="authoring-service"><span>authoring-service</span></label>
@@ -282,11 +251,34 @@
             </div>
           </div>
         </div>
-        <div id="running-row" class="running-row hidden">
-          <span id="running-indicator" class="hint">Running turn…</span>
-          <button type="button" id="cancelTurnBtn" class="secondary small">Cancel</button>
+
+        <!-- Raw log preview inside investigation -->
+        <div id="run-raw-logs-section" class="raw-logs-section hidden">
+          <div class="raw-logs-header">
+            <span id="run-raw-logs-title" class="raw-logs-title"></span>
+            <button type="button" id="run-raw-logs-close" class="secondary small">✕ Close</button>
+          </div>
+          <div class="raw-logs-hint">💡 Click any row to view detail — then dig into errors at that timestamp</div>
+          <div id="run-raw-logs-table" class="raw-logs-table"></div>
         </div>
       </div>
+
+      <!-- Sticky footer: only What next? buttons + running indicator -->
+      <div class="run-sticky-footer">
+        <div id="turn-summary" class="turn-summary hidden">
+          <h4>What next?</h4>
+          <div class="hypothesis"><strong>Hypothesis:</strong> <span id="hypothesis-text"></span></div>
+          <ul id="findings"></ul>
+          <div class="next-buttons">
+            <button type="button" data-action="mongo">Check MongoDB</button>
+            <button type="button" data-action="opensearch">Check OpenSearch</button>
+            <button type="button" data-action="kafka">Check Kafka</button>
+            <button type="button" data-action="more_logs" class="secondary">Search more logs</button>
+            <button type="button" data-action="dig_errors" class="secondary">🔍 Dig into errors at timestamp</button>
+            <button type="button" data-action="finish" class="secondary">Finish — give me the report</button>
+          </div>
+        </div>
+        <div id="running-indicator" class="hint hidden">Running turn…</div>
       </div><!-- end run-sticky-footer -->
 
       <div id="paste-panel" class="paste-panel hidden">

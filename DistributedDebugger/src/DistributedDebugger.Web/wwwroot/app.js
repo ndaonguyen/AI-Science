@@ -84,7 +84,8 @@ $nextButtons.addEventListener('click', e => {
     document.getElementById('dig-ts-display').textContent = '— click a log row below —';
     document.getElementById('dig-env-val').value = '';
     document.getElementById('dig-env-display').textContent = '—';
-    document.getElementById('dig-errors-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const scrollArea = document.querySelector('.run-scroll-area');
+    if (scrollArea) setTimeout(() => scrollArea.scrollTop = 0, 50); // scroll to top so panel is visible
     return;
   }
   runStep(action);
@@ -794,8 +795,12 @@ function openDigPanelFromRow(rawTs, environment) {
   document.getElementById('dig-errors-panel').classList.remove('hidden');
   $moreLogsPanel.classList.add('hidden');
 
-  // Scroll dig panel into view
-  document.getElementById('dig-errors-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  // Scroll the investigation area so the dig panel is visible
+  const scrollArea = document.querySelector('.run-scroll-area');
+  if (scrollArea) setTimeout(() => {
+    const panel = document.getElementById('dig-errors-panel');
+    scrollArea.scrollTop = panel.offsetTop - scrollArea.offsetTop;
+  }, 50);
 }
 
 // ---- utils ----
