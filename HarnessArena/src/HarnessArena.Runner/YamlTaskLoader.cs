@@ -20,6 +20,26 @@ public sealed class YamlTaskLoader : ITaskLoader
         string path,
         CancellationToken ct)
     {
+        // If the path doesn't exist as-is (e.g. when running from bin/Debug),
+        // walk up parent directories to find it relative to the repo root.
+        if (!Directory.Exists(path) && !Path.IsPathRooted(path))
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            string? resolved = null;
+            while (dir != null)
+            {
+                var candidate = Path.Combine(dir.FullName, path);
+                if (Directory.Exists(candidate))
+                {
+                    resolved = candidate;
+                    break;
+                }
+                dir = dir.Parent;
+            }
+            if (resolved != null)
+                path = resolved;
+        }
+
         if (!Directory.Exists(path))
         {
             throw new DirectoryNotFoundException($"Task folder not found: {path}");
