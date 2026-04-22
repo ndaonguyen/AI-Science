@@ -67,6 +67,22 @@ public static class EvalCommand
         await WriteCsvAsync(csvPath, rows, ct);
         Console.WriteLine($"Results written to: {Path.GetFullPath(csvPath)}");
 
+        // Regenerate the static HTML dashboard from all CSVs in the folder.
+        // This is cheap (a few ms even for hundreds of runs) and keeps the
+        // dashboard in sync with reality after every eval. If generation
+        // fails for any reason we don't want to fail the whole eval command,
+        // so we log and carry on.
+        try
+        {
+            var dashboard = new DashboardGenerator();
+            var dashboardPath = await dashboard.GenerateAsync(outputPath, ct);
+            Console.WriteLine($"Dashboard updated:   {Path.GetFullPath(dashboardPath)}");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Console.Error.WriteLine($"  ⚠ dashboard generation failed: {ex.Message}");
+        }
+
         return 0;
     }
 
