@@ -322,13 +322,25 @@ static string BuildInstruction(GuidedStepRequest req)
 
     return req.Action?.ToLowerInvariant() switch
     {
+        "dig_errors" when services is not null =>
+            $"Search CloudWatch logs in these services: {services}" +
+            (env is not null ? $" (environment: {env})" : "") +
+            BuildTimeRangeClause(ctx) +
+            ". Fetch ALL logs in this time window — do NOT apply any filterPattern. " +
+            "Then analyze everything returned and identify anything suspicious: exceptions, stack traces, warnings, timeouts, connection errors, null references, or anything that could explain the error we already found. " +
+            "The `query` field should be a natural language summary of the bug we are investigating. " +
+            "Use exactly the startTime and endTime provided. " +
+            "After retrieving logs, provide: 1) Root cause or suspicious patterns found, 2) Key log lines that stand out, 3) Updated hypothesis.",
+
         "search_logs" or "more_logs" when services is not null =>
             $"Search CloudWatch logs in these services: {services}" +
             (env is not null ? $" (environment: {env})" : "") +
             BuildTimeRangeClause(ctx) +
-            (string.IsNullOrWhiteSpace(ctx?.FilterText) ? "" : $" using filterPattern \"{ctx!.FilterText}\"") +
-            ". Use the bug description from earlier as the search focus. " +
-            "IMPORTANT: You MUST use exactly the startTime, endTime, and filterPattern values specified above — do NOT invent or adjust them. " +
+            (string.IsNullOrWhiteSpace(ctx?.FilterText) ? "" : $" with filterPattern \"{ctx!.FilterText}\"") +
+            ". IMPORTANT: " +
+            "1) If a filterPattern is specified above, use it exactly as the `filterPattern` field — do NOT put it into the `query` field. " +
+            "2) The `query` field must be a natural language description of what you are looking for based on the bug description, e.g. 'content rendering error in authoring service'. " +
+            "3) Use exactly the startTime and endTime provided — do NOT invent or adjust them. " +
             "If multiple services are listed, make one search_logs call per service.",
 
         "mongo" =>

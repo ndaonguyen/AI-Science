@@ -62,6 +62,18 @@ $nextButtons.addEventListener('click', e => {
 
   if (action === 'more_logs') {
     $moreLogsPanel.classList.remove('hidden');
+    document.getElementById('dig-errors-panel').classList.add('hidden');
+    return;
+  }
+  if (action === 'dig_errors') {
+    document.getElementById('dig-errors-panel').classList.remove('hidden');
+    $moreLogsPanel.classList.add('hidden');
+    // Clear any previous selection so user must pick a row
+    document.getElementById('dig-ts-iso').value = '';
+    document.getElementById('dig-ts-display').textContent = '— click a log row below —';
+    document.getElementById('dig-env-val').value = '';
+    document.getElementById('dig-env-display').textContent = '—';
+    document.getElementById('dig-errors-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     return;
   }
   runStep(action);
@@ -91,6 +103,10 @@ document.getElementById('rawLogsClose').addEventListener('click', () => {
   document.getElementById('rawLogsSection').classList.add('hidden');
 });
 
+document.getElementById('run-raw-logs-close').addEventListener('click', () => {
+  document.getElementById('run-raw-logs-section').classList.add('hidden');
+});
+
 document.getElementById('more-logs-preview').addEventListener('click', async () => {
   const services = Array.from($moreLogsPanel.querySelectorAll('input[type=checkbox]:checked'))
     .map(c => c.value);
@@ -98,11 +114,61 @@ document.getElementById('more-logs-preview').addEventListener('click', async () 
   const filter = document.getElementById('more-logs-filter').value.trim();
   const { startTime, endTime } = resolveTimeRange('more-logs-preset','mlStartDate','mlStartTime','mlEndDate','mlEndTime');
   if (services.length === 0) { alert('Pick at least one service.'); return; }
-  // Preview each service in sequence
   for (const svc of services) {
     await showRawLogs(svc, env, startTime, endTime, filter);
   }
 });
+
+document.getElementById('dig-cancel').addEventListener('click', () => {
+  document.getElementById('dig-errors-panel').classList.add('hidden');
+});
+
+document.getElementById('dig-preview').addEventListener('click', async () => {
+  const p = getDigParams({ forPreview: true });
+  if (!p) return;
+  const { services, env, startTime, endTime, filterText } = p;
+  if (!services.length) { alert('Pick at least one service.'); return; }
+  for (const svc of services) {
+    await showRawLogs(svc, env, startTime, endTime, filterText);
+  }
+});
+
+document.getElementById('dig-analyze').addEventListener('click', () => {
+  const p = getDigParams({ forPreview: false });
+  if (!p) return;
+  const { services, env, startTime, endTime } = p;
+  if (!services.length) { alert('Pick at least one service.'); return; }
+  document.getElementById('dig-errors-panel').classList.add('hidden');
+  runStep('dig_errors', { services, environment: env, startTime, endTime });
+});
+
+function getDigParams({ forPreview = false } = {}) {
+  const isoTs = document.getElementById('dig-ts-iso').value;
+  const env   = document.getElementById('dig-env-val').value;
+  const windowMin = parseInt(document.getElementById('dig-window').value, 10) || 2;
+
+  if (!isoTs) { alert('Please click a log row first to select a timestamp.'); return null; }
+
+  const center = new Date(isoTs);
+  const startTime = new Date(center - windowMin * 60_000).toISOString();
+  const endTime   = new Date(center + windowMin * 60_000).toISOString();
+
+  const services = Array.from(
+    document.querySelectorAll('#dig-services input[type=checkbox]:checked')
+  ).map(c => c.value);
+
+  // Preview uses keyword filter so the table is manageable.
+  // Analyze sends NO filter — AI gets all logs and finds suspicious ones itself.
+  let filterText = '';
+  if (forPreview) {
+    const keywords = Array.from(
+      document.querySelectorAll('#dig-keywords input[type=checkbox]:checked')
+    ).map(c => c.value);
+    filterText = keywords.map(k => k.includes(' ') ? `?"${k}"` : `?${k}`).join(' ');
+  }
+
+  return { services, env, startTime, endTime, filterText };
+}
 
 // ---- CloudWatch-style datetime picker ----
 setupDateRangePicker({
@@ -439,13 +505,35 @@ async function previewLogs() {
 }
 
 async function showRawLogs(service, environment, startTime, endTime, filterText) {
-  const $section = document.getElementById('rawLogsSection');
-  const $title   = document.getElementById('rawLogsTitle');
-  const $table   = document.getElementById('rawLogsTable');
+  // Use the in-investigation container if a session is active, else the form-section one.
+  const inRun = !!state.sessionId;
+  const sectionId = inRun ? 'run-raw-logs-section' : 'rawLogsSection';
+  const titleId   = inRun ? 'run-raw-logs-title'   : 'rawLogsTitle';
+  const tableId   = inRun ? 'run-raw-logs-table'   : 'rawLogsTable';
 
-  $title.textContent = `Loading logs for ${service} …`;
+  const $section = document.getElementById(sectionId);
+  const $table   = document.getElementById(tableId);
+  const $title   = document.getElementById(titleId);
+
   $section.classList.remove('hidden');
-  $table.innerHTML = '<div class="raw-logs-loading">Fetching from CloudWatch…</div>';
+  $title.textContent = '';   // clear header — individual groups have their own label
+
+  // Create a new group div and append it (preserving previous results)
+  const $group = document.createElement('div');
+  $group.className = 'raw-logs-group';
+  $group.innerHTML = `<div class="raw-logs-group-header">
+    <span class="raw-logs-group-title">Loading ${escape(service)} …</span>
+    <button type="button" class="raw-logs-group-close secondary small" title="Remove this result">✕</button>
+  </div>
+  <div class="raw-logs-group-body"><div class="raw-logs-loading">Fetching from CloudWatch…</div></div>`;
+  $table.appendChild($group);
+  $group.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  // Wire the ✕ button to remove just this group
+  $group.querySelector('.raw-logs-group-close').addEventListener('click', () => $group.remove());
+
+  const $groupTitle = $group.querySelector('.raw-logs-group-title');
+  const $groupBody  = $group.querySelector('.raw-logs-group-body');
 
   try {
     const res = await fetch('/api/logs/raw', {
@@ -456,36 +544,71 @@ async function showRawLogs(service, environment, startTime, endTime, filterText)
     const data = await res.json();
 
     if (!res.ok) {
-      $table.innerHTML = `<div class="raw-logs-error">Error: ${escape(data.detail || data.error || 'unknown')}</div>`;
+      $groupBody.innerHTML = `<div class="raw-logs-error">Error: ${escape(data.detail || data.error || 'unknown')}</div>`;
+      $groupTitle.textContent = `${service} — error`;
       return;
     }
 
     const { logGroup, count, events } = data;
-    $title.textContent = `${logGroup}  ·  ${count} matching event${count !== 1 ? 's' : ''}` +
-                         (filterText ? `  ·  filter: "${filterText}"` : '');
+    $groupTitle.textContent = `${logGroup}  ·  ${count} event${count !== 1 ? 's' : ''}` +
+                              (filterText ? `  ·  filter: "${filterText}"` : '');
 
     if (!events || events.length === 0) {
-      $table.innerHTML = '<div class="raw-logs-empty">No matching log events in this time window.</div>';
+      $groupBody.innerHTML = '<div class="raw-logs-empty">No matching log events in this time window.</div>';
       return;
     }
 
-    // Build table rows — highlight the filter text in each message
+    // Build clickable rows
     const rows = events.map(ev => {
       const msg = filterText
-        ? escape(ev.message).replace(
-            new RegExp(escape(filterText).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
-            m => `<mark>${m}</mark>`)
+        ? escape(ev.message).replace(new RegExp(escapeRegex(filterText), 'gi'), m => `<mark>${m}</mark>`)
         : escape(ev.message);
-      return `<div class="raw-log-row">
+      return `<div class="raw-log-row" data-ts="${escape(ev.timestamp)}" data-env="${escape(environment)}" title="Click to dig into errors around this timestamp">
         <span class="raw-log-ts">${escape(ev.timestamp)}</span>
         <span class="raw-log-msg">${msg}</span>
+        <span class="raw-log-dig-hint">🔍</span>
       </div>`;
     }).join('');
 
-    $table.innerHTML = rows;
+    $groupBody.innerHTML = rows;
+
+    // Wire row clicks — only available in run mode
+    if (inRun) {
+      $groupBody.querySelectorAll('.raw-log-row').forEach(row => {
+        row.addEventListener('click', () => {
+          // Clear selected state across ALL groups
+          document.querySelectorAll(`#${tableId} .raw-log-row`).forEach(r => r.classList.remove('selected'));
+          row.classList.add('selected');
+          openDigPanelFromRow(row.dataset.ts, row.dataset.env);
+        });
+      });
+    }
   } catch (err) {
-    $table.innerHTML = `<div class="raw-logs-error">Network error: ${escape(err.message)}</div>`;
+    $groupBody.innerHTML = `<div class="raw-logs-error">Network error: ${escape(err.message)}</div>`;
+    $groupTitle.textContent = `${service} — network error`;
   }
+}
+
+/**
+ * Populate and open the dig panel from a clicked raw log row.
+ * Timestamp comes from the row's data-ts attribute ("2026-04-22 09:09:31.851 UTC").
+ */
+function openDigPanelFromRow(rawTs, environment) {
+  // Parse "2026-04-22 09:09:31.851 UTC" → ISO string
+  const isoTs = rawTs.replace(' UTC', 'Z').replace(' ', 'T');
+  const display = rawTs;
+
+  document.getElementById('dig-ts-iso').value     = isoTs;
+  document.getElementById('dig-ts-display').textContent = display;
+  document.getElementById('dig-env-val').value    = environment;
+  document.getElementById('dig-env-display').textContent = environment;
+
+  // Auto-check services that match the environment (pre-tick common ones)
+  document.getElementById('dig-errors-panel').classList.remove('hidden');
+  $moreLogsPanel.classList.add('hidden');
+
+  // Scroll dig panel into view
+  document.getElementById('dig-errors-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // ---- utils ----
@@ -502,6 +625,9 @@ function compactJson(obj) {
     const s = JSON.stringify(obj);
     return s.length > 200 ? s.slice(0, 200) + '…' : s;
   } catch { return '(unserializable)'; }
+}
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** Convert a preset select + optional custom date/time inputs into ISO UTC strings. */

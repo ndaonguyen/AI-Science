@@ -323,11 +323,94 @@ button.small { padding: 5px 12px; font-size: 13px; }
   font-weight: 600;
 }
 .raw-logs-table {
-  max-height: 360px;
+  max-height: 480px;
   overflow-y: auto;
   background: #1e1e2e;
-  padding: 8px 0;
 }
+
+/* Each service result is its own collapsible group */
+.raw-logs-group { border-bottom: 2px solid #12121e; }
+.raw-logs-group:last-child { border-bottom: none; }
+
+.raw-logs-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px;
+  background: #12121e;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.raw-logs-group-title {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #89b4fa;
+  font-weight: 600;
+}
+.raw-logs-group-close {
+  font-size: 11px;
+  padding: 2px 7px;
+  background: transparent;
+  border: 1px solid #333355;
+  color: #888;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.raw-logs-group-close:hover { background: #2a2a3e; color: #cdd6f4; }
+.raw-logs-group-body { padding: 2px 0; }
+.raw-logs-loading, .raw-logs-empty, .raw-logs-error {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: #888;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.raw-logs-error { color: #f38ba8; }
+
+/* Dig into errors panel */
+.dig-errors-header {
+  margin-bottom: 12px;
+}
+.dig-errors-header small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.dig-errors-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+@media (max-width: 640px) {
+  .dig-errors-grid { grid-template-columns: 1fr; }
+}
+#dig-keywords { gap: 6px; }
+#dig-keywords .checkbox { font-size: 12px; }
+
+/* Locked timestamp / env display */
+.dig-locked-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: #f5f7ff;
+  border: 1px solid #d0d8f0;
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+.dig-locked-field { flex: 1; min-width: 180px; }
+.dig-locked-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  color: #1a237e;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+/* Raw log rows: clickable in run mode */
 .raw-log-row {
   display: flex;
   gap: 12px;
@@ -336,8 +419,20 @@ button.small { padding: 5px 12px; font-size: 13px; }
   font-size: 12px;
   line-height: 1.5;
   border-bottom: 1px solid #2a2a3e;
+  cursor: pointer;
+  align-items: flex-start;
 }
 .raw-log-row:hover { background: #2a2a3e; }
+.raw-log-row.selected { background: #2d3a5a; outline: 1px solid #7c9cbf; }
+.raw-log-dig-hint {
+  margin-left: auto;
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+  font-size: 14px;
+}
+.raw-log-row:hover .raw-log-dig-hint { opacity: 1; }
+
 .raw-log-ts {
   color: #7c9cbf;
   white-space: nowrap;
@@ -347,6 +442,7 @@ button.small { padding: 5px 12px; font-size: 13px; }
   color: #cdd6f4;
   word-break: break-all;
   white-space: pre-wrap;
+  flex: 1;
 }
 .raw-log-msg mark {
   background: #f9e05b;
@@ -354,12 +450,13 @@ button.small { padding: 5px 12px; font-size: 13px; }
   border-radius: 2px;
   padding: 0 2px;
 }
-.raw-logs-loading, .raw-logs-empty, .raw-logs-error {
-  padding: 16px;
-  text-align: center;
-  font-size: 13px;
-  color: #888;
+
+/* Hint bar above run-section raw logs */
+.raw-logs-hint {
+  background: #1e2a3a;
+  color: #7c9cbf;
+  font-size: 11px;
+  padding: 4px 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-.raw-logs-error { color: #f38ba8; }
 

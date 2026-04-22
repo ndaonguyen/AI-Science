@@ -132,6 +132,16 @@
       </div>
       <div id="events"></div>
 
+      <!-- Raw log preview inside investigation (populated by Preview/more-logs) -->
+      <div id="run-raw-logs-section" class="raw-logs-section hidden">
+        <div class="raw-logs-header">
+          <span id="run-raw-logs-title" class="raw-logs-title"></span>
+          <button type="button" id="run-raw-logs-close" class="secondary small">✕ Close</button>
+        </div>
+        <div class="raw-logs-hint">💡 Click any row to dig into errors around that timestamp</div>
+        <div id="run-raw-logs-table" class="raw-logs-table"></div>
+      </div>
+
       <div id="turn-summary" class="turn-summary hidden">
         <h3>Summary</h3>
         <div class="hypothesis"><strong>Hypothesis:</strong> <span id="hypothesis-text"></span></div>
@@ -142,7 +152,76 @@
           <button type="button" data-action="opensearch">Check OpenSearch</button>
           <button type="button" data-action="kafka">Check Kafka</button>
           <button type="button" data-action="more_logs" class="secondary">Search more logs</button>
+          <button type="button" data-action="dig_errors" class="secondary">🔍 Dig into errors at timestamp</button>
           <button type="button" data-action="finish" class="secondary">Finish — give me the report</button>
+        </div>
+
+        <!-- Dig into errors panel -->
+        <div id="dig-errors-panel" class="more-logs-panel hidden">
+          <div class="dig-errors-header">
+            <strong>🔍 Dig into errors at timestamp</strong>
+            <small>Pick a log row from the preview below — timestamp and environment are filled automatically. Adjust the window and keywords, then preview or analyze.</small>
+          </div>
+
+          <!-- Read-only: populated when user clicks a log row -->
+          <div class="dig-locked-row">
+            <div class="dig-locked-field">
+              <div class="custom-range-label">Selected timestamp (UTC)</div>
+              <div id="dig-ts-display" class="dig-locked-value">— click a log row below —</div>
+              <!-- hidden inputs carry the actual values for getDigParams() -->
+              <input type="hidden" id="dig-ts-iso">
+            </div>
+            <div class="dig-locked-field">
+              <div class="custom-range-label">Environment</div>
+              <div id="dig-env-display" class="dig-locked-value">—</div>
+              <input type="hidden" id="dig-env-val">
+            </div>
+          </div>
+
+          <div class="dig-errors-grid" style="margin-top:12px">
+            <div>
+              <div class="custom-range-label">Window around timestamp</div>
+              <select id="dig-window" style="margin-top:4px;width:100%">
+                <option value="1">± 1 minute</option>
+                <option value="2" selected>± 2 minutes</option>
+                <option value="5">± 5 minutes</option>
+                <option value="10">± 10 minutes</option>
+                <option value="30">± 30 minutes</option>
+              </select>
+            </div>
+            <div>
+              <div class="custom-range-label">Services</div>
+              <div class="checkbox-group" id="dig-services" style="margin-top:4px">
+                <label class="checkbox"><input type="checkbox" value="authoring-service" checked><span>authoring-service</span></label>
+                <label class="checkbox"><input type="checkbox" value="content-media-service"><span>content-media-service</span></label>
+                <label class="checkbox"><input type="checkbox" value="content-search-service"><span>content-search-service</span></label>
+              </div>
+            </div>
+          </div>
+
+          <div class="custom-range-label" style="margin-top:12px">Error keywords</div>
+          <div class="checkbox-group" id="dig-keywords" style="margin-top:4px;flex-wrap:wrap">
+            <label class="checkbox"><input type="checkbox" value="Exception" checked><span>Exception</span></label>
+            <label class="checkbox"><input type="checkbox" value="Error" checked><span>Error</span></label>
+            <label class="checkbox"><input type="checkbox" value="FATAL" checked><span>FATAL</span></label>
+            <label class="checkbox"><input type="checkbox" value="timeout" checked><span>timeout</span></label>
+            <label class="checkbox"><input type="checkbox" value="failed" checked><span>failed</span></label>
+            <label class="checkbox"><input type="checkbox" value="null"><span>null</span></label>
+            <label class="checkbox"><input type="checkbox" value="NullReference"><span>NullReference</span></label>
+            <label class="checkbox"><input type="checkbox" value="Connection refused"><span>Connection refused</span></label>
+            <label class="checkbox"><input type="checkbox" value="OutOfMemory"><span>OutOfMemory</span></label>
+            <label class="checkbox"><input type="checkbox" value="deadlock"><span>deadlock</span></label>
+            <label class="checkbox"><input type="checkbox" value="stack trace"><span>stack trace</span></label>
+            <label class="checkbox"><input type="checkbox" value="Caused by"><span>Caused by</span></label>
+            <label class="checkbox"><input type="checkbox" value="Unhandled"><span>Unhandled</span></label>
+            <label class="checkbox"><input type="checkbox" value="unauthorized"><span>unauthorized</span></label>
+          </div>
+
+          <div class="row" style="margin-top:12px;gap:8px">
+            <button type="button" id="dig-preview" class="secondary small">Preview matching logs</button>
+            <button type="button" id="dig-analyze">Analyze with AI</button>
+            <button type="button" id="dig-cancel" class="secondary small">Cancel</button>
+          </div>
         </div>
         <div id="more-logs-panel" class="more-logs-panel hidden">
           <div class="checkbox-group" id="more-logs-services">
