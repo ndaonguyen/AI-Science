@@ -13,6 +13,27 @@ if (args.Length == 0 || args[0] is "-h" or "--help")
     return 0;
 }
 
+// Dispatch on subcommand. `investigate` is the default (real-run) path;
+// `eval` replays recorded cases against the grader for regression testing.
+if (args[0] == "eval")
+{
+    var openAiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+    if (string.IsNullOrWhiteSpace(openAiKey))
+    {
+        Console.Error.WriteLine("OPENAI_API_KEY is not set.");
+        return 1;
+    }
+
+    using var evalCts = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) =>
+    {
+        e.Cancel = true;
+        evalCts.Cancel();
+    };
+
+    return await EvalCommand.RunAsync(args, openAiKey, evalCts.Token);
+}
+
 if (args[0] != "investigate")
 {
     Console.Error.WriteLine($"Unknown command: {args[0]}");
@@ -105,7 +126,7 @@ Console.CancelKeyPress += (_, e) =>
 };
 
 var mode = useMock ? "mock" : $"real CloudWatch · {retrieverMode} retriever";
-Console.WriteLine($"=== DistributedDebugger — Phase 3 ({mode}) ===");
+Console.WriteLine($"=== DistributedDebugger — Phase 4 ({mode}) ===");
 Console.WriteLine();
 Console.WriteLine("Investigating... (streaming steps below)");
 Console.WriteLine();
@@ -215,30 +236,38 @@ static void PrintUsage()
 {
     Console.WriteLine("DistributedDebugger — AI-powered bug investigator for distributed systems");
     Console.WriteLine();
+    Console.WriteLine("Commands:");
+    Console.WriteLine("  investigate   Run a single investigation against real systems (or mocks).");
+    Console.WriteLine("  eval          Replay recorded cases through the grader for regression testing.");
+    Console.WriteLine();
     Console.WriteLine("Usage:");
     Console.WriteLine("  debugger investigate --desc \"<bug description>\" [options]");
     Console.WriteLine("  debugger investigate --desc-file <path>           [options]");
     Console.WriteLine("  debugger investigate --ticket <id> [--desc \"...\"] [options]");
+    Console.WriteLine("  debugger eval [--cases <dir>] [--config <id> ...] [--judge-model gpt-4o]");
     Console.WriteLine();
-    Console.WriteLine("Options:");
+    Console.WriteLine("investigate options:");
     Console.WriteLine("  --desc <text>       Bug description (quoted).");
     Console.WriteLine("  --desc-file <path>  Read description from a file.");
     Console.WriteLine("  --ticket <id>       Jira/ticket id for reporting.");
     Console.WriteLine("  --output <folder>   Where to write markdown reports (default: investigations).");
-    Console.WriteLine("  --mock              Use fixture logs instead of real CloudWatch (free, deterministic).");
+    Console.WriteLine("  --mock              Use fixture logs instead of real CloudWatch.");
     Console.WriteLine("  --retriever <kind>  keyword | semantic | hybrid (default: hybrid).");
     Console.WriteLine("  --region <region>   Default AWS region (default: ap-southeast-2).");
     Console.WriteLine();
-    Console.WriteLine("Tools the agent will use:");
+    Console.WriteLine("eval options:");
+    Console.WriteLine("  --cases <dir>       Folder of .yaml eval cases (default: eval-cases).");
+    Console.WriteLine("  --output <dir>      Where to write CSV results (default: eval-results).");
+    Console.WriteLine("  --config <id>       Named config to run (repeat for multiple). Default: baseline.");
+    Console.WriteLine("  --judge-model <m>   Model used for grading (default: gpt-4o).");
+    Console.WriteLine();
+    Console.WriteLine("Tools the agent will use during investigation:");
     Console.WriteLine("  search_logs              — CloudWatch Logs (auto)");
     Console.WriteLine("  request_mongo_query      — asks you to run a MongoDB find");
     Console.WriteLine("  request_opensearch_query — asks you to run an OpenSearch query");
     Console.WriteLine("  request_kafka_events     — asks you to check Kafka via your UI");
     Console.WriteLine("  record_hypothesis        — agent's working theory (auto)");
     Console.WriteLine("  finish_investigation     — final root-cause report (auto)");
-    Console.WriteLine();
-    Console.WriteLine("When the agent calls a request_* tool, you'll see the exact query it wants");
-    Console.WriteLine("and can paste the result, type 'empty' for no match, or 'skip' to decline.");
     Console.WriteLine();
     Console.WriteLine("Env vars:");
     Console.WriteLine("  OPENAI_API_KEY  (required)");
@@ -251,4 +280,7 @@ static void PrintUsage()
     Console.WriteLine("  # Real investigation with CloudWatch + human-loop queries");
     Console.WriteLine("  debugger investigate --ticket COCO-1234 \\");
     Console.WriteLine("    --desc \"Activity act-789 published at 14:27 UTC but not in search\"");
+    Console.WriteLine();
+    Console.WriteLine("  # Regression suite — compare two configs across all recorded cases");
+    Console.WriteLine("  debugger eval --config baseline --config big-model");
 }

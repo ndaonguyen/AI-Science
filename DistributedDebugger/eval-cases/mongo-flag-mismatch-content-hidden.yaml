@@ -1,0 +1,61 @@
+id: mongo-flag-mismatch-content-hidden
+description: |
+  A batch of newly-imported EP-authored activities is not visible in the
+  author's dashboard. Users report they published ~200 math activities via
+  the import pipeline around 09:00 UTC today but none appear in the admin
+  listing. Activities imported via the same route yesterday are fine.
+ticketId: COCO-1188
+
+truth:
+  expectedCause: |
+    The import pipeline on authoring-service failed to set isEpContent=true on
+    documents created through the new bulk path. The admin listing filters on
+    isEpContent and therefore excludes them. Yesterday's activities went
+    through the legacy single-item endpoint, which sets the flag correctly.
+  expectedServices:
+    - authoring-service
+    - MongoDB
+  mustMentionKeywords:
+    - isEpContent
+    - authoring-service
+  mustNotClaim:
+    - OpenSearch outage
+    - Kafka issue
+  minConfidence: Medium
+
+scriptedLogs:
+  - service: authoring-service
+    matchesKeyword: import
+    logs: |
+      2024-01-15T09:00:12Z INFO  Bulk import started batch=imp-442 count=200
+      2024-01-15T09:00:14Z INFO  Bulk import using path=bulk_v2
+      2024-01-15T09:00:45Z INFO  Bulk import completed batch=imp-442 inserted=200 failed=0
+      2024-01-15T09:01:01Z INFO  Emitted 200 ContentPublished events
+
+  - service: authoring-service
+    matchesKeyword: isEpContent
+    logs: |
+      (no matching log lines — isEpContent is not set anywhere in the bulk_v2 path)
+
+scriptedData:
+  - tool: request_mongo_query
+    matches: imp-442
+    response: |
+      [
+        {"_id":"imp-442-001","title":"Quadratic 1","status":"published","isEpContent":false},
+        {"_id":"imp-442-002","title":"Quadratic 2","status":"published","isEpContent":false},
+        {"_id":"imp-442-003","title":"Quadratic 3","status":"published","isEpContent":false}
+      ]
+
+  - tool: request_mongo_query
+    matches: activities
+    response: |
+      [
+        {"_id":"imp-442-001","title":"Quadratic 1","status":"published","isEpContent":false},
+        {"_id":"imp-442-002","title":"Quadratic 2","status":"published","isEpContent":false}
+      ]
+
+  - tool: request_opensearch_query
+    matches: imp-442
+    response: |
+      { "hits": { "total": { "value": 200 }, "hits": [ {"_id":"imp-442-001"} ] } }

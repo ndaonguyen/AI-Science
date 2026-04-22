@@ -1,0 +1,69 @@
+id: opensearch-indexing-dlq-missing
+description: |
+  Activity act-789 was published at 14:27 UTC today. The author reports it
+  immediately but the activity does not appear in content search. Refreshing
+  does not help. Other activities published before and after are appearing
+  normally.
+ticketId: COCO-1234
+
+truth:
+  expectedCause: |
+    content-media-service consumed the ContentPublished Kafka event but timed
+    out indexing into OpenSearch. Retries were exhausted and because the DLQ
+    handler is not configured in this environment, the event was silently
+    dropped, so no ContentIndexed event was emitted.
+  expectedServices:
+    - content-media-service
+    - OpenSearch
+  mustMentionKeywords:
+    - act-789
+    - OpenSearch
+    - DLQ
+  mustNotClaim:
+    # Common wrong guesses the agent should not confidently assert.
+    - authoring-service bug
+    - Kafka publish failed
+  minConfidence: Medium
+
+# What each tool should return when the agent queries with matching terms.
+# The match rule is loose — case insensitive substring of the agent's query
+# OR the agent's query being a substring of MatchesKeyword.
+scriptedLogs:
+  - service: authoring-service
+    matchesKeyword: act-789
+    logs: |
+      2024-01-15T14:27:01Z INFO  ContentPublished activityId=act-789 ok=true
+      2024-01-15T14:27:01Z INFO  Kafka publish succeeded topic=content.published partition=3 offset=99012
+
+  - service: content-media-service
+    matchesKeyword: act-789
+    logs: |
+      2024-01-15T14:27:03Z INFO  Kafka consumed topic=content.published activityId=act-789
+      2024-01-15T14:27:03Z INFO  Starting OpenSearch index for act-789
+      2024-01-15T14:28:03Z ERROR OpenSearch index timeout after 60s activityId=act-789
+      2024-01-15T14:28:04Z ERROR Retry 1/3 for act-789
+      2024-01-15T14:28:09Z ERROR OpenSearch index timeout after 60s (retry 1)
+      2024-01-15T14:28:15Z ERROR All retries exhausted for act-789. DLQ handler not configured in this env; event dropped.
+
+  - service: content-media-service
+    matchesKeyword: DLQ
+    logs: |
+      2024-01-15T14:28:15Z ERROR All retries exhausted for act-789. DLQ handler not configured in this env; event dropped.
+
+# Pre-recorded responses for the request_* tools during eval runs.
+scriptedData:
+  - tool: request_mongo_query
+    matches: act-789
+    response: |
+      [{"_id":"act-789","status":"published","isEpContent":true,"publishedAt":"2024-01-15T14:27:01Z"}]
+
+  - tool: request_opensearch_query
+    matches: act-789
+    response: |
+      { "hits": { "total": { "value": 0 }, "hits": [] } }
+
+  - tool: request_kafka_events
+    matches: act-789
+    response: |
+      14:27:01Z  topic=content.published   ContentPublished    {activityId: "act-789"}
+      (no ContentIndexed event found in this window)

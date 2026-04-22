@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>DistributedDebugger.Eval</RootNamespace>
+    <AssemblyName>DistributedDebugger.Eval</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="OpenAI" Version="2.10.0" />
+    <PackageReference Include="YamlDotNet" Version="16.2.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DistributedDebugger.Core\DistributedDebugger.Core.csproj" />
+    <ProjectReference Include="..\DistributedDebugger.Agent\DistributedDebugger.Agent.csproj" />
+  </ItemGroup>
+</Project>
