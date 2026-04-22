@@ -1,17 +1,16 @@
-// Vanilla JS — no build step, no bundler. The UI has three states:
+// Vanilla JS — no build step. The page supports two modes:
 //
-//   1. Form        — user enters description + options, hits Start.
-//   2. Running     — live event feed streams in via SSE. May open a paste panel.
-//   3. Complete    — final markdown report renders at the bottom.
+//   - autonomous: user describes a bug, agent runs end-to-end until finished
+//   - guided:     user describes a bug + picks services/env, agent does ONE
+//                 turn at a time, pauses with a summary, user clicks the
+//                 next-step button to drive the next turn
 //
-// The server has three endpoints:
-//   POST /api/investigate           → { sessionId }
-//   GET  /api/stream/{sessionId}    → text/event-stream
-//   POST /api/paste/{sessionId}     → 200 OK
-//
-// Nothing clever here. One global state object, one EventSource, plain DOM.
+// Under the hood both modes use SSE for live event streaming and the same
+// paste-panel flow for request_* tools. The mode just decides which API
+// endpoints we hit.
 
 const state = {
+  mode: 'guided',       // 'guided' | 'autonomous'
   sessionId: null,
   eventSource: null,
 };
@@ -21,15 +20,29 @@ const $form = document.getElementById('form-section');
 const $run = document.getElementById('run-section');
 const $events = document.getElementById('events');
 const $report = document.getElementById('report');
+
 const $paste = document.getElementById('paste-panel');
 const $pasteSource = document.getElementById('paste-source');
 const $pasteEnv = document.getElementById('paste-env');
 const $pasteReason = document.getElementById('paste-reason');
 const $pasteQuery = document.getElementById('paste-query');
 const $pasteText = document.getElementById('paste-text');
-const $sessionIdBadge = document.getElementById('sessionIdBadge');
 
-// ---- form ----
+const $sessionIdBadge = document.getElementById('sessionIdBadge');
+const $modeBadge = document.getElementById('modeBadge');
+const $guidedFields = document.getElementById('guided-fields');
+
+const $turnSummary = document.getElementById('turn-summary');
+const $hypothesis = document.getElementById('hypothesis-text');
+const $findings = document.getElementById('findings');
+const $nextButtons = document.querySelector('.next-buttons');
+const $moreLogsPanel = document.getElementById('more-logs-panel');
+const $runningIndicator = document.getElementById('running-indicator');
+
+// ---- wiring ----
+document.querySelectorAll('input[name=mode]').forEach(r =>
+  r.addEventListener('change', onModeChange));
+
 document.getElementById('startBtn').addEventListener('click', startInvestigation);
 document.getElementById('newBtn').addEventListener('click', resetToForm);
 
@@ -40,6 +53,47 @@ document.getElementById('emptyBtn').addEventListener('click', () =>
 document.getElementById('skipBtn').addEventListener('click', () =>
   submitPaste('skip', null));
 
+// Guided next-step buttons. Delegated click handler on the container so we
+// don't have to wire each button individually.
+$nextButtons.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const action = btn.dataset.action;
+
+  if (action === 'more_logs') {
+    $moreLogsPanel.classList.remove('hidden');
+    return;
+  }
+  runStep(action);
+});
+
+document.getElementById('more-logs-submit').addEventListener('click', () => {
+  const services = Array.from($moreLogsPanel.querySelectorAll('input[type=checkbox]:checked'))
+    .map(c => c.value);
+  const env = document.getElementById('more-logs-env').value;
+  if (services.length === 0) {
+    alert('Pick at least one service to search.');
+    return;
+  }
+  $moreLogsPanel.classList.add('hidden');
+  runStep('more_logs', { services, environment: env });
+});
+
+document.getElementById('more-logs-cancel').addEventListener('click', () => {
+  $moreLogsPanel.classList.add('hidden');
+});
+
+onModeChange();
+
+// ---- mode switching ----
+function onModeChange() {
+  const selected = document.querySelector('input[name=mode]:checked')?.value || 'guided';
+  state.mode = selected;
+  // Services/env only matter in guided mode (autonomous lets the agent pick).
+  $guidedFields.style.display = selected === 'guided' ? '' : 'none';
+}
+
+// ---- start investigation ----
 async function startInvestigation() {
   const description = document.getElementById('description').value.trim();
   if (!description) {
@@ -53,7 +107,8 @@ async function startInvestigation() {
     mock: document.getElementById('mock').checked,
   };
 
-  const res = await fetch('/api/investigate', {
+  const endpoint = state.mode === 'guided' ? '/api/guided/start' : '/api/investigate';
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -67,38 +122,64 @@ async function startInvestigation() {
   const { sessionId } = await res.json();
   state.sessionId = sessionId;
   $sessionIdBadge.textContent = sessionId;
+  $modeBadge.textContent = state.mode;
 
   $form.classList.add('hidden');
   $run.classList.remove('hidden');
   $events.innerHTML = '';
   $report.classList.add('hidden');
   $report.innerHTML = '';
+  $turnSummary.classList.add('hidden');
 
   subscribe(sessionId);
+
+  // In guided mode, immediately run the first step (search_logs on the
+  // selected services). Feels more natural than making the user click
+  // "search logs" on an empty page right after starting.
+  if (state.mode === 'guided') {
+    const services = Array.from(document.querySelectorAll('input[name=service]:checked'))
+      .map(c => c.value);
+    const environment = document.getElementById('environment').value;
+    if (services.length === 0) {
+      alert('Pick at least one service to search.');
+      return;
+    }
+    runStep('search_logs', { services, environment });
+  }
 }
 
 function subscribe(sessionId) {
   closeStream();
 
-  // EventSource auto-reconnects on drop — handy when the dev server
-  // restarts or the laptop sleeps mid-investigation.
-  const es = new EventSource(`/api/stream/${sessionId}`);
+  const streamUrl = state.mode === 'guided'
+    ? `/api/guided/stream/${sessionId}`
+    : `/api/stream/${sessionId}`;
+
+  const es = new EventSource(streamUrl);
   state.eventSource = es;
 
-  // One handler per event kind. The server sends `event: <kind>\ndata: <json>`,
-  // so we match kinds we care about explicitly; anything unrecognised is silently
-  // ignored so the UI doesn't break when we add new event types server-side.
   es.addEventListener('model_call', e => append('model-call', 'model →', JSON.parse(e.data)));
   es.addEventListener('model_response', e => appendModelResponse(JSON.parse(e.data)));
   es.addEventListener('tool_call', e => appendToolCall(JSON.parse(e.data)));
   es.addEventListener('tool_result', e => appendToolResult(JSON.parse(e.data)));
   es.addEventListener('hypothesis', e => appendHypothesis(JSON.parse(e.data)));
   es.addEventListener('paste_request', e => showPastePanel(JSON.parse(e.data)));
-  es.addEventListener('paste_received', e => hidePastePanel());
+  es.addEventListener('paste_received', () => hidePastePanel());
   es.addEventListener('completed', e => showReport(JSON.parse(e.data)));
   es.addEventListener('error', e => {
-    // Protect against SSE `error` events from the connection itself (no data).
     if (e.data) appendError(JSON.parse(e.data));
+  });
+
+  // Guided-mode-specific events
+  es.addEventListener('turn_started', e => {
+    const d = JSON.parse(e.data);
+    $turnSummary.classList.add('hidden');
+    $runningIndicator.classList.remove('hidden');
+    appendLine('model-call', '▶ turn', d.action || '', null);
+  });
+  es.addEventListener('turn_summary', e => {
+    $runningIndicator.classList.add('hidden');
+    showTurnSummary(JSON.parse(e.data));
   });
 }
 
@@ -116,6 +197,53 @@ function resetToForm() {
   $form.classList.remove('hidden');
 }
 
+// ---- guided-mode turn ----
+async function runStep(action, context) {
+  if (!state.sessionId || state.mode !== 'guided') return;
+
+  disableNextButtons(true);
+  $turnSummary.classList.add('hidden');
+  $runningIndicator.classList.remove('hidden');
+
+  const body = { action, context: context || null };
+  const res = await fetch(`/api/guided/step/${state.sessionId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  disableNextButtons(false);
+  $runningIndicator.classList.add('hidden');
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    alert('Turn failed: ' + (err.error || res.statusText));
+  }
+  // Actual summary rendering is driven by the SSE `turn_summary` event, not
+  // this response — SSE arrives first in practice.
+}
+
+function disableNextButtons(disabled) {
+  $nextButtons.querySelectorAll('button').forEach(b => b.disabled = disabled);
+}
+
+function showTurnSummary(data) {
+  $hypothesis.textContent = data.hypothesis || '(none)';
+  $findings.innerHTML = '';
+  (data.findings || []).forEach(f => {
+    const li = document.createElement('li');
+    li.textContent = f;
+    $findings.appendChild(li);
+  });
+
+  // Highlight the agent's suggested next step so the user can see what it
+  // recommends without losing the option to pick something else.
+  $nextButtons.querySelectorAll('button').forEach(b => {
+    b.classList.toggle('suggested', b.dataset.action === data.suggestedNext);
+  });
+
+  $turnSummary.classList.remove('hidden');
+}
+
 // ---- paste panel ----
 function showPastePanel(req) {
   $pasteSource.textContent = req.sourceName;
@@ -127,13 +255,11 @@ function showPastePanel(req) {
   $pasteText.focus();
 }
 
-function hidePastePanel() {
-  $paste.classList.add('hidden');
-}
+function hidePastePanel() { $paste.classList.add('hidden'); }
 
 async function submitPaste(mode, text) {
   if (!state.sessionId) return;
-  hidePastePanel();   // optimistic — the server will echo paste_received anyway
+  hidePastePanel();
   await fetch(`/api/paste/${state.sessionId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -154,7 +280,6 @@ function appendLine(className, tag, text, iteration) {
 function append(cls, tag, data) {
   return appendLine(cls, tag, '', data.iteration);
 }
-
 function appendModelResponse(data) {
   const div = appendLine('model-response', 'model ←',
     data.text ? truncate(data.text, 160) : '(no text)', data.iteration);
@@ -164,9 +289,7 @@ function appendModelResponse(data) {
     div.appendChild(pre);
   }
 }
-
 function appendToolCall(data) {
-  // Compact the tool input so it fits on one line. Full JSON is in the log.
   const argPreview = compactJson(data.input);
   const div = appendLine('tool-call', '🔧 ' + data.toolName, argPreview, data.iteration);
   if (argPreview.length > 200) {
@@ -176,18 +299,15 @@ function appendToolCall(data) {
     div.appendChild(pre);
   }
 }
-
 function appendToolResult(data) {
   const cls = data.isError ? 'tool-result err' : 'tool-result';
   const tag = data.isError ? '✗' : '✓';
   appendLine(cls, tag, truncate(data.output || '', 180), data.iteration);
 }
-
 function appendHypothesis(data) {
   appendLine('hypothesis', '💡 ' + (data.hypothesis || ''),
     data.reasoning ? ' — ' + data.reasoning : '', data.iteration);
 }
-
 function appendError(data) {
   appendLine('error', '⚠ error', data.message || '(unknown)', data.iteration);
 }
@@ -195,9 +315,8 @@ function appendError(data) {
 // ---- report ----
 function showReport(data) {
   hidePastePanel();
+  $turnSummary.classList.add('hidden');
   $report.classList.remove('hidden');
-  // For now: render markdown as <pre>. A future iteration could wire in
-  // marked.js for full rendering. The pre keeps it readable and safe.
   const h = document.createElement('h2');
   h.textContent = 'Final report';
   $report.innerHTML = '';
