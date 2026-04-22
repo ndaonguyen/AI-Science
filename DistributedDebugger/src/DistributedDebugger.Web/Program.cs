@@ -291,7 +291,9 @@ static string BuildInstruction(GuidedStepRequest req)
         "search_logs" or "more_logs" when services is not null =>
             $"Search CloudWatch logs in these services: {services}" +
             (env is not null ? $" (environment: {env})" : "") +
+            BuildTimeRangeClause(ctx) +
             ". Use the bug description from earlier as the search focus. " +
+            "IMPORTANT: You MUST use exactly the startTime and endTime values specified above — do NOT invent or adjust the time window. " +
             "If multiple services are listed, make one search_logs call per service.",
 
         "mongo" =>
@@ -315,6 +317,20 @@ static string BuildInstruction(GuidedStepRequest req)
             ? "Continue the investigation based on what makes sense next."
             : ctx!.FreeText!,
     };
+}
+
+static string BuildTimeRangeClause(GuidedStepContext? ctx)
+{
+    if (ctx is null) return "";
+    var start = ctx.StartTime;
+    var end   = ctx.EndTime;
+    if (!string.IsNullOrWhiteSpace(start) && !string.IsNullOrWhiteSpace(end))
+        return $" for the time window {start} to {end}";
+    if (!string.IsNullOrWhiteSpace(start))
+        return $" starting from {start}";
+    if (!string.IsNullOrWhiteSpace(end))
+        return $" up to {end}";
+    return "";
 }
 
 /// <summary>

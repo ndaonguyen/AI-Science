@@ -62,6 +62,42 @@
             <option value="live-ca-central-1">live-ca-central-1</option>
           </select>
         </label>
+        <label>
+          <span>Time range</span>
+          <div class="time-range-row">
+            <select id="timePreset">
+              <option value="30m">Last 30 minutes</option>
+              <option value="1h" selected>Last 1 hour</option>
+              <option value="3h">Last 3 hours</option>
+              <option value="6h">Last 6 hours</option>
+              <option value="12h">Last 12 hours</option>
+              <option value="24h">Last 24 hours</option>
+              <option value="custom">Custom range…</option>
+            </select>
+            <span id="customRangeSummary" class="time-range-summary hidden"></span>
+          </div>
+          <div id="customRangePanel" class="custom-range-panel hidden">
+            <div class="custom-range-grid">
+              <div class="custom-range-col">
+                <div class="custom-range-label">Start</div>
+                <input type="date" id="startDate" class="cw-date-input">
+                <input type="time" id="startTimeInput" class="cw-time-input" value="00:00">
+                <div class="custom-range-hint">UTC</div>
+              </div>
+              <div class="custom-range-sep">→</div>
+              <div class="custom-range-col">
+                <div class="custom-range-label">End</div>
+                <input type="date" id="endDate" class="cw-date-input">
+                <input type="time" id="endTimeInput" class="cw-time-input" value="23:59">
+                <div class="custom-range-hint">UTC</div>
+              </div>
+            </div>
+            <div class="custom-range-actions">
+              <button type="button" id="applyCustomRange" class="secondary small">Apply</button>
+              <button type="button" id="cancelCustomRange" class="secondary small">Cancel</button>
+            </div>
+          </div>
+        </label>
       </div>
 
       <div class="row">
@@ -105,8 +141,39 @@
               <option value="test">test</option>
               <option value="live-ca-central-1">live-ca-central-1</option>
             </select>
+            <select id="more-logs-preset">
+              <option value="30m">Last 30 min</option>
+              <option value="1h" selected>Last 1 h</option>
+              <option value="3h">Last 3 h</option>
+              <option value="6h">Last 6 h</option>
+              <option value="12h">Last 12 h</option>
+              <option value="24h">Last 24 h</option>
+              <option value="custom">Custom…</option>
+            </select>
+            <span id="moreLogsRangeSummary" class="time-range-summary hidden"></span>
             <button type="button" id="more-logs-submit">Run search</button>
             <button type="button" id="more-logs-cancel" class="secondary">Cancel</button>
+          </div>
+          <div id="moreLogsCustomPanel" class="custom-range-panel hidden">
+            <div class="custom-range-grid">
+              <div class="custom-range-col">
+                <div class="custom-range-label">Start</div>
+                <input type="date" id="mlStartDate" class="cw-date-input">
+                <input type="time" id="mlStartTime" class="cw-time-input" value="00:00">
+                <div class="custom-range-hint">UTC</div>
+              </div>
+              <div class="custom-range-sep">→</div>
+              <div class="custom-range-col">
+                <div class="custom-range-label">End</div>
+                <input type="date" id="mlEndDate" class="cw-date-input">
+                <input type="time" id="mlEndTime" class="cw-time-input" value="23:59">
+                <div class="custom-range-hint">UTC</div>
+              </div>
+            </div>
+            <div class="custom-range-actions">
+              <button type="button" id="applyMoreLogsRange" class="secondary small">Apply</button>
+              <button type="button" id="cancelMoreLogsRange" class="secondary small">Cancel</button>
+            </div>
           </div>
         </div>
         <div id="running-indicator" class="hint hidden">Running turn…</div>

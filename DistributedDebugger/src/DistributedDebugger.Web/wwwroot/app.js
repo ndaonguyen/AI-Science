@@ -75,13 +75,80 @@ document.getElementById('more-logs-submit').addEventListener('click', () => {
     alert('Pick at least one service to search.');
     return;
   }
+  const { startTime, endTime } = resolveTimeRange('more-logs-preset', 'mlStartDate', 'mlStartTime', 'mlEndDate', 'mlEndTime');
   $moreLogsPanel.classList.add('hidden');
-  runStep('more_logs', { services, environment: env });
+  runStep('more_logs', { services, environment: env, startTime, endTime });
 });
 
 document.getElementById('more-logs-cancel').addEventListener('click', () => {
   $moreLogsPanel.classList.add('hidden');
 });
+
+// ---- CloudWatch-style datetime picker ----
+setupDateRangePicker({
+  presetId:    'timePreset',
+  panelId:     'customRangePanel',
+  summaryId:   'customRangeSummary',
+  startDateId: 'startDate',
+  startTimeId: 'startTimeInput',
+  endDateId:   'endDate',
+  endTimeId:   'endTimeInput',
+  applyId:     'applyCustomRange',
+  cancelId:    'cancelCustomRange',
+});
+
+setupDateRangePicker({
+  presetId:    'more-logs-preset',
+  panelId:     'moreLogsCustomPanel',
+  summaryId:   'moreLogsRangeSummary',
+  startDateId: 'mlStartDate',
+  startTimeId: 'mlStartTime',
+  endDateId:   'mlEndDate',
+  endTimeId:   'mlEndTime',
+  applyId:     'applyMoreLogsRange',
+  cancelId:    'cancelMoreLogsRange',
+});
+
+function setupDateRangePicker({ presetId, panelId, summaryId, startDateId, startTimeId, endDateId, endTimeId, applyId, cancelId }) {
+  const $preset  = document.getElementById(presetId);
+  const $panel   = document.getElementById(panelId);
+  const $summary = document.getElementById(summaryId);
+
+  $preset.addEventListener('change', () => {
+    if ($preset.value === 'custom') {
+      // Seed inputs with sensible defaults: last 1 hour in UTC
+      const now = new Date();
+      const ago = new Date(now - 3600_000);
+      document.getElementById(startDateId).value = toUtcDate(ago);
+      document.getElementById(startTimeId).value = toUtcTime(ago);
+      document.getElementById(endDateId).value   = toUtcDate(now);
+      document.getElementById(endTimeId).value   = toUtcTime(now);
+      $panel.classList.remove('hidden');
+      $summary.classList.add('hidden');
+    } else {
+      $panel.classList.add('hidden');
+      $summary.classList.add('hidden');
+    }
+  });
+
+  document.getElementById(applyId).addEventListener('click', () => {
+    const sd = document.getElementById(startDateId).value;
+    const st = document.getElementById(startTimeId).value;
+    const ed = document.getElementById(endDateId).value;
+    const et = document.getElementById(endTimeId).value;
+    if (!sd || !ed) { alert('Please fill in both start and end dates.'); return; }
+    $panel.classList.add('hidden');
+    $summary.textContent = `${sd} ${st} → ${ed} ${et} UTC`;
+    $summary.classList.remove('hidden');
+  });
+
+  document.getElementById(cancelId).addEventListener('click', () => {
+    $panel.classList.add('hidden');
+    // Revert preset back to last non-custom value
+    $preset.value = '1h';
+    $summary.classList.add('hidden');
+  });
+}
 
 onModeChange();
 
@@ -144,7 +211,8 @@ async function startInvestigation() {
       alert('Pick at least one service to search.');
       return;
     }
-    runStep('search_logs', { services, environment });
+    const { startTime, endTime } = resolveTimeRange('timePreset', 'startDate', 'startTimeInput', 'endDate', 'endTimeInput');
+    runStep('search_logs', { services, environment, startTime, endTime });
   }
 }
 
@@ -341,3 +409,36 @@ function compactJson(obj) {
     return s.length > 200 ? s.slice(0, 200) + '…' : s;
   } catch { return '(unserializable)'; }
 }
+
+/** Convert a preset select + optional custom date/time inputs into ISO UTC strings. */
+function resolveTimeRange(presetId, startDateId, startTimeId, endDateId, endTimeId) {
+  const preset = document.getElementById(presetId)?.value || '1h';
+  if (preset === 'custom') {
+    const sd = document.getElementById(startDateId)?.value;
+    const st = document.getElementById(startTimeId)?.value || '00:00';
+    const ed = document.getElementById(endDateId)?.value;
+    const et = document.getElementById(endTimeId)?.value || '23:59';
+    return {
+      startTime: sd ? new Date(`${sd}T${st}:00Z`).toISOString() : null,
+      endTime:   ed ? new Date(`${ed}T${et}:00Z`).toISOString() : null,
+    };
+  }
+  const minutes = { '30m': 30, '1h': 60, '3h': 180, '6h': 360, '12h': 720, '24h': 1440 }[preset] || 60;
+  const end = new Date();
+  const start = new Date(end - minutes * 60_000);
+  return { startTime: start.toISOString(), endTime: end.toISOString() };
+}
+
+/** Zero-pad to 2 digits */
+const pad = n => String(n).padStart(2, '0');
+
+/** Format a Date as YYYY-MM-DD in UTC */
+function toUtcDate(d) {
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}`;
+}
+
+/** Format a Date as HH:MM in UTC */
+function toUtcTime(d) {
+  return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+

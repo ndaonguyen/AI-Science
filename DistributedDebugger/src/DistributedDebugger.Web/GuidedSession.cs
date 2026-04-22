@@ -216,4 +216,6 @@ public sealed record GuidedStepRequest(string Action, GuidedStepContext? Context
 public sealed record GuidedStepContext(
     IReadOnlyList<string>? Services = null,
     string? Environment = null,
-    string? FreeText = null);
+    string? FreeText = null,
+    string? StartTime = null,
+    string? EndTime = null);

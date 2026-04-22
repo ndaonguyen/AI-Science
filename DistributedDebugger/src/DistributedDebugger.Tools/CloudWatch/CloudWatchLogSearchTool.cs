@@ -138,6 +138,11 @@ public sealed class CloudWatchLogSearchTool : IDebugTool, IDisposable
         var start = DateTimeOffset.TryParse(startStr, out var parsedStart)
             ? parsedStart : end.AddHours(-1);
 
+        Console.Error.WriteLine(
+            $"[CloudWatch] search: service={service} env={environment} " +
+            $"window={start:yyyy-MM-dd HH:mm}Z → {end:yyyy-MM-dd HH:mm}Z " +
+            $"filter='{filterPattern}'");
+
         if (end <= start)
         {
             return new ToolExecutionResult(
@@ -221,7 +226,7 @@ public sealed class CloudWatchLogSearchTool : IDebugTool, IDisposable
                     Service: service,
                     LogGroup: logGroup,
                     Timestamp: DateTimeOffset.FromUnixTimeMilliseconds(ev.Timestamp),
-                    Text: ev.Message ?? ""));
+                    Text: ExtractLogText(ev.Message ?? "")));
             }
 
             request.NextToken = response.NextToken;
@@ -335,6 +340,30 @@ public sealed class CloudWatchLogSearchTool : IDebugTool, IDisposable
             Console.Error.WriteLine($"[CloudWatch] CLI credential load failed: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// EP services wrap every log line in a JSON envelope like:
+    ///   {"container_id":"…","log":"  Unexpected Execution Error at /…","container_name":"authoring-service",…}
+    ///
+    /// The keyword/semantic retrievers work on the text content, so we want
+    /// the clean inner "log" string — not the whole JSON blob. If the message
+    /// isn't JSON or has no "log" field, fall back to the raw message.
+    /// </summary>
+    private static string ExtractLogText(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw) || raw[0] != '{') return raw;
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty("log", out var logProp) &&
+                logProp.ValueKind == JsonValueKind.String)
+            {
+                return logProp.GetString()?.Trim() ?? raw;
+            }
+        }
+        catch { /* not JSON — use raw */ }
+        return raw;
     }
 
     public void Dispose()
