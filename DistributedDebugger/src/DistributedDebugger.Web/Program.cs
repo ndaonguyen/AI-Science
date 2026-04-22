@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DistributedDebugger.Core.Models;
 using DistributedDebugger.Web;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,6 +12,7 @@ builder.WebHost.UseUrls("http://localhost:5123");
 // One registry per process. Singleton is correct: the registry is thread-safe
 // and only holds in-flight sessions, not long-lived state.
 builder.Services.AddSingleton<SessionRegistry>();
+builder.Services.AddSingleton<GuidedSessionRegistry>();
 
 // Nicer JSON naming for browser consumption.
 builder.Services.ConfigureHttpJsonOptions(o =>
@@ -94,27 +96,276 @@ app.MapGet("/api/stream/{sessionId}", async (
 //   mode = "empty" → empty string ("no match")
 //   mode = "skip"  → null ("engineer declined")
 app.MapPost("/api/paste/{sessionId}",
-    async (string sessionId, PasteSubmission sub, SessionRegistry reg) =>
+    async (string sessionId, PasteSubmission sub, SessionRegistry reg, GuidedSessionRegistry greg) =>
+{
+    // Try the autonomous registry first; fall back to guided. A paste can
+    // belong to either kind of session.
+    var autonomous = reg.Get(sessionId);
+    if (autonomous is not null)
+    {
+        var v = MapPasteValue(sub);
+        await autonomous.PasteResponses.Writer.WriteAsync(v);
+        return Results.Ok();
+    }
+    var guided = greg.Get(sessionId);
+    if (guided is not null)
+    {
+        var v = MapPasteValue(sub);
+        await guided.PasteResponses.Writer.WriteAsync(v);
+        return Results.Ok();
+    }
+    return Results.NotFound(new { error = "unknown session" });
+});
+
+
+// ---- Guided mode endpoints ----
+
+// Start a guided session. Unlike /api/investigate, this does NOT kick off
+// the agent. It creates a session in a waiting state; the first /api/step
+// call drives the first turn.
+app.MapPost("/api/guided/start",
+    (GuidedStartRequest req, GuidedSessionRegistry reg, IConfiguration cfg) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Description))
+    {
+        return Results.BadRequest(new { error = "description is required" });
+    }
+    try
+    {
+        var session = GuidedSessionLauncher.Create(reg, req, cfg);
+        return Results.Ok(new { sessionId = session.Id });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// Subscribe to a guided session's event stream. Shape is identical to the
+// autonomous /api/stream endpoint so the browser can reuse the same client.
+app.MapGet("/api/guided/stream/{sessionId}", async (
+    string sessionId, GuidedSessionRegistry reg, HttpContext ctx, CancellationToken ct) =>
+{
+    var session = reg.Get(sessionId);
+    if (session is null)
+    {
+        ctx.Response.StatusCode = 404;
+        await ctx.Response.WriteAsync("unknown session", ct);
+        return;
+    }
+
+    ctx.Response.Headers.ContentType = "text/event-stream";
+    ctx.Response.Headers.CacheControl = "no-cache";
+    ctx.Response.Headers["X-Accel-Buffering"] = "no";
+
+    if (session.PendingDataRequest is { } pending)
+    {
+        await WriteSseAsync(ctx, new SessionEvent("paste_request", new
+        {
+            sourceName = pending.SourceName,
+            renderedQuery = pending.RenderedQuery,
+            reason = pending.Reason,
+            suggestedEnv = pending.SuggestedEnv,
+        }), ct);
+    }
+
+    if (session.IsComplete && session.FinalReportMarkdown is not null)
+    {
+        await WriteSseAsync(ctx, new SessionEvent("completed",
+            new { markdown = session.FinalReportMarkdown, status = "Completed" }), ct);
+        return;
+    }
+
+    try
+    {
+        await foreach (var ev in session.AgentEvents.Reader.ReadAllAsync(ct))
+        {
+            await WriteSseAsync(ctx, ev, ct);
+        }
+    }
+    catch (OperationCanceledException) { /* normal on browser close */ }
+});
+
+// Advance a guided session by one turn. Translates the browser's high-level
+// action into the natural-language instruction the agent expects.
+app.MapPost("/api/guided/step/{sessionId}",
+    async (string sessionId, GuidedStepRequest req, GuidedSessionRegistry reg, CancellationToken ct) =>
 {
     var session = reg.Get(sessionId);
     if (session is null) return Results.NotFound(new { error = "unknown session" });
+    if (session.IsComplete) return Results.Ok(new { status = "already_complete" });
 
-    string? value = sub.Mode switch
+    // Simple turn serialisation. If a second POST arrives while the first is
+    // running we reject — the UI should disable buttons during a turn anyway.
+    if (session.TurnInProgress)
     {
-        "paste" => string.IsNullOrWhiteSpace(sub.Text) ? "" : sub.Text,
-        "empty" => "",
-        "skip"  => null,
-        _       => null,
-    };
+        return Results.Conflict(new { error = "a turn is already in progress" });
+    }
+    session.TurnInProgress = true;
 
-    await session.PasteResponses.Writer.WriteAsync(value);
-    return Results.Ok();
+    try
+    {
+        var instruction = BuildInstruction(req);
+
+        // Push a user-visible "turn_started" event so the event feed has
+        // context for the tool calls that follow.
+        await session.AgentEvents.Writer.WriteAsync(new SessionEvent("turn_started",
+            new { action = req.Action, instruction }));
+
+        var step = await session.Agent.RunStepAsync(
+            session.History,
+            instruction,
+            onEvent: ev =>
+            {
+                // Forward structured trace events to the browser. Same mapping
+                // as in the autonomous launcher.
+                session.AgentEvents.Writer.TryWrite(MapTraceEvent(ev));
+            },
+            ct: ct);
+
+        await session.AgentEvents.Writer.WriteAsync(new SessionEvent("turn_summary",
+            new
+            {
+                findings = step.Findings,
+                hypothesis = step.Hypothesis,
+                suggestedNext = step.SuggestedNext,
+                inputTokens = step.InputTokens,
+                outputTokens = step.OutputTokens,
+            }));
+
+        // If the turn's action was "finish", also persist a markdown report.
+        if (string.Equals(req.Action, "finish", StringComparison.OrdinalIgnoreCase))
+        {
+            var md = BuildGuidedReport(session, step);
+            session.Complete(md);
+            await session.AgentEvents.Writer.WriteAsync(new SessionEvent("completed",
+                new { markdown = md, status = "Completed" }));
+        }
+
+        return Results.Ok(new
+        {
+            findings = step.Findings,
+            hypothesis = step.Hypothesis,
+            suggestedNext = step.SuggestedNext,
+        });
+    }
+    catch (Exception ex)
+    {
+        await session.AgentEvents.Writer.WriteAsync(new SessionEvent("error",
+            new { message = ex.Message }));
+        return Results.Problem(ex.Message);
+    }
+    finally
+    {
+        session.TurnInProgress = false;
+    }
 });
 
 app.Run();
 
 
 // ---- helpers ----
+
+static string? MapPasteValue(PasteSubmission sub) => sub.Mode switch
+{
+    "paste" => string.IsNullOrWhiteSpace(sub.Text) ? "" : sub.Text,
+    "empty" => "",
+    "skip"  => null,
+    _       => null,
+};
+
+/// <summary>
+/// Translate the browser's high-level action into a natural-language
+/// instruction the LLM will see. This is the "prompt engineering" for
+/// guided mode — it's what turns a button click into an agent turn.
+/// </summary>
+static string BuildInstruction(GuidedStepRequest req)
+{
+    var ctx = req.Context;
+    var services = ctx?.Services is { Count: > 0 } s ? string.Join(", ", s) : null;
+    var env = string.IsNullOrWhiteSpace(ctx?.Environment) ? null : ctx!.Environment;
+
+    return req.Action?.ToLowerInvariant() switch
+    {
+        "search_logs" or "more_logs" when services is not null =>
+            $"Search CloudWatch logs in these services: {services}" +
+            (env is not null ? $" (environment: {env})" : "") +
+            ". Use the bug description from earlier as the search focus. " +
+            "If multiple services are listed, make one search_logs call per service.",
+
+        "mongo" =>
+            "Check MongoDB for relevant documents. Formulate a request_mongo_query " +
+            "call using the evidence you already have (activity id, user id, etc). " +
+            "Only one query.",
+
+        "opensearch" =>
+            "Check OpenSearch indexed state. Formulate a request_opensearch_query " +
+            "call using the evidence you already have. Only one query.",
+
+        "kafka" =>
+            "Check Kafka for whether a relevant event was emitted (or not). " +
+            "Formulate a request_kafka_events call. Only one query.",
+
+        "finish" =>
+            "You have enough evidence. Call finish_investigation now with a " +
+            "structured root cause. Also produce a concise final summary.",
+
+        _ => string.IsNullOrWhiteSpace(ctx?.FreeText)
+            ? "Continue the investigation based on what makes sense next."
+            : ctx!.FreeText!,
+    };
+}
+
+/// <summary>
+/// Build a final markdown report when the user hits "finish". We draw from
+/// the session history rather than the agent's structured RootCauseReport —
+/// in guided mode the agent may have finished without calling the
+/// finish_investigation tool, so a history-based render is more reliable.
+/// </summary>
+static string BuildGuidedReport(GuidedSession session, GuidedStepResult lastStep)
+{
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("# Bug Investigation (guided)");
+    if (!string.IsNullOrWhiteSpace(session.Report.TicketId))
+        sb.AppendLine($"Ticket: **{session.Report.TicketId}**");
+    sb.AppendLine();
+    sb.AppendLine("## Description");
+    sb.AppendLine(session.Report.Description);
+    sb.AppendLine();
+    sb.AppendLine("## Final summary");
+    sb.AppendLine();
+    sb.AppendLine("**Hypothesis:** " + (string.IsNullOrWhiteSpace(lastStep.Hypothesis) ? "(none)" : lastStep.Hypothesis));
+    sb.AppendLine();
+    if (lastStep.Findings.Count > 0)
+    {
+        sb.AppendLine("**Key findings:**");
+        foreach (var f in lastStep.Findings) sb.AppendLine($"- {f}");
+    }
+    return sb.ToString();
+}
+
+/// <summary>
+/// Map agent-level trace events to the compact SSE shape the browser expects.
+/// Kept in sync with the autonomous ForwardEventToSse mapper so the frontend
+/// can share rendering code across both modes.
+/// </summary>
+static SessionEvent MapTraceEvent(InvestigationEvent ev) => ev switch
+{
+    ModelCallEvent mc => new SessionEvent("model_call",
+        new { iteration = mc.Iteration, messageCount = mc.PromptMessageCount }),
+    ModelResponseEvent mr => new SessionEvent("model_response",
+        new { iteration = mr.Iteration, text = mr.Text, outputTokens = mr.OutputTokens }),
+    ToolCallEvent tc => new SessionEvent("tool_call",
+        new { iteration = tc.Iteration, toolName = tc.ToolName,
+              input = System.Text.Json.JsonDocument.Parse(tc.Input.GetRawText()).RootElement }),
+    ToolResultEvent tr => new SessionEvent("tool_result",
+        new { iteration = tr.Iteration, output = tr.Output, isError = tr.IsError }),
+    HypothesisEvent h => new SessionEvent("hypothesis",
+        new { iteration = h.Iteration, hypothesis = h.Hypothesis, reasoning = h.Reasoning }),
+    ErrorEvent e => new SessionEvent("error",
+        new { iteration = e.Iteration, message = e.Message }),
+    _ => new SessionEvent("unknown", null),
+};
 
 static async Task WriteSseAsync(HttpContext ctx, SessionEvent ev, CancellationToken ct)
 {

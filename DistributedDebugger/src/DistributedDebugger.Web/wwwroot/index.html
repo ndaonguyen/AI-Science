@@ -12,8 +12,18 @@
   </header>
 
   <main>
-    <!-- Step 1: the form -->
     <section id="form-section" class="card">
+      <div class="mode-toggle">
+        <label class="radio">
+          <input type="radio" name="mode" value="guided" checked>
+          <span>Guided — I drive, agent assists</span>
+        </label>
+        <label class="radio">
+          <input type="radio" name="mode" value="autonomous">
+          <span>Autonomous — agent investigates on its own</span>
+        </label>
+      </div>
+
       <h2>New investigation</h2>
       <label>
         <span>Ticket ID <em>(optional)</em></span>
@@ -21,9 +31,39 @@
       </label>
       <label>
         <span>Bug description</span>
-        <textarea id="description" rows="6"
-          placeholder="Activity act-789 published at 14:27 UTC but not appearing in content search. Refreshing doesn't help. Other activities published before and after are appearing normally."></textarea>
+        <textarea id="description" rows="5"
+          placeholder="Activity act-789 published at 14:27 UTC but not appearing in content search. Refreshing doesn't help."></textarea>
       </label>
+
+      <div id="guided-fields">
+        <label>
+          <span>Services to search (CloudWatch)</span>
+          <div class="checkbox-group">
+            <label class="checkbox">
+              <input type="checkbox" name="service" value="authoring-service" checked>
+              <span>authoring-service</span>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="service" value="content-media-service" checked>
+              <span>content-media-service</span>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="service" value="content-search-service">
+              <span>content-search-service</span>
+            </label>
+          </div>
+        </label>
+        <label>
+          <span>Environment</span>
+          <select id="environment">
+            <option value="live">live</option>
+            <option value="staging">staging</option>
+            <option value="test">test</option>
+            <option value="live-ca-central-1">live-ca-central-1</option>
+          </select>
+        </label>
+      </div>
+
       <div class="row">
         <label class="checkbox">
           <input type="checkbox" id="mock"> Use mock data (no AWS, free)
@@ -33,15 +73,45 @@
       <div class="hint">Tip: narrower descriptions with IDs and timestamps produce better investigations.</div>
     </section>
 
-    <!-- Step 2: the live event feed -->
     <section id="run-section" class="card hidden">
       <div class="row between">
-        <h2>Investigation <span id="sessionIdBadge" class="badge"></span></h2>
+        <h2>Investigation <span id="sessionIdBadge" class="badge"></span> <span id="modeBadge" class="badge subtle"></span></h2>
         <button id="newBtn" type="button" class="secondary">New investigation</button>
       </div>
       <div id="events"></div>
 
-      <!-- Paste prompt: only shown when the agent calls a request_* tool -->
+      <div id="turn-summary" class="turn-summary hidden">
+        <h3>Summary</h3>
+        <div class="hypothesis"><strong>Hypothesis:</strong> <span id="hypothesis-text"></span></div>
+        <ul id="findings"></ul>
+        <h4>What next?</h4>
+        <div class="next-buttons">
+          <button type="button" data-action="mongo">Check MongoDB</button>
+          <button type="button" data-action="opensearch">Check OpenSearch</button>
+          <button type="button" data-action="kafka">Check Kafka</button>
+          <button type="button" data-action="more_logs" class="secondary">Search more logs</button>
+          <button type="button" data-action="finish" class="secondary">Finish — give me the report</button>
+        </div>
+        <div id="more-logs-panel" class="more-logs-panel hidden">
+          <div class="checkbox-group" id="more-logs-services">
+            <label class="checkbox"><input type="checkbox" value="authoring-service"><span>authoring-service</span></label>
+            <label class="checkbox"><input type="checkbox" value="content-media-service"><span>content-media-service</span></label>
+            <label class="checkbox"><input type="checkbox" value="content-search-service"><span>content-search-service</span></label>
+          </div>
+          <div class="row">
+            <select id="more-logs-env">
+              <option value="live">live</option>
+              <option value="staging">staging</option>
+              <option value="test">test</option>
+              <option value="live-ca-central-1">live-ca-central-1</option>
+            </select>
+            <button type="button" id="more-logs-submit">Run search</button>
+            <button type="button" id="more-logs-cancel" class="secondary">Cancel</button>
+          </div>
+        </div>
+        <div id="running-indicator" class="hint hidden">Running turn…</div>
+      </div>
+
       <div id="paste-panel" class="paste-panel hidden">
         <div class="paste-header">
           <strong id="paste-source"></strong>
@@ -57,7 +127,6 @@
         </div>
       </div>
 
-      <!-- Final report renders here once the agent finishes -->
       <div id="report" class="report hidden"></div>
     </section>
   </main>

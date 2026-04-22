@@ -158,3 +158,65 @@ button.secondary:hover { background: var(--bg); }
   font-size: 13px;
   white-space: pre-wrap;
 }
+
+/* Mode toggle + radios */
+.mode-toggle {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.radio { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; }
+.radio input { margin: 0; }
+.radio span { display: inline; margin: 0; font-size: 13px; color: var(--fg); }
+
+/* Service checkboxes + env dropdown */
+.checkbox-group {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.checkbox-group .checkbox { margin: 0; }
+select {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--fg);
+}
+
+/* Guided turn summary */
+.turn-summary {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f3f7fb;
+  border: 1px solid #c4d6e8;
+  border-radius: 6px;
+}
+.turn-summary h3 { margin: 0 0 8px; font-size: 14px; }
+.turn-summary h4 { margin: 16px 0 8px; font-size: 13px; color: var(--muted); }
+.turn-summary .hypothesis { margin-bottom: 10px; font-size: 14px; }
+.turn-summary ul { margin: 0; padding-left: 20px; }
+.turn-summary li { margin-bottom: 4px; font-size: 14px; }
+
+.next-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.next-buttons button.suggested {
+  outline: 2px solid var(--warn);
+  outline-offset: 2px;
+}
+
+.more-logs-panel {
+  margin-top: 12px;
+  padding: 12px;
+  background: #fff;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+.more-logs-panel .checkbox-group { margin-bottom: 8px; }
