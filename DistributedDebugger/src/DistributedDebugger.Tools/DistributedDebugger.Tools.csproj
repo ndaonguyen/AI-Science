@@ -4,6 +4,12 @@
     <AssemblyName>DistributedDebugger.Tools</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="AWSSDK.CloudWatchLogs" Version="3.7.411.2" />
+    <PackageReference Include="AWSSDK.SSO" Version="3.7.400.138" />
+    <PackageReference Include="AWSSDK.SSOOIDC" Version="3.7.400.138" />
+    <PackageReference Include="OpenAI" Version="2.10.0" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\DistributedDebugger.Core\DistributedDebugger.Core.csproj" />
   </ItemGroup>
 </Project>

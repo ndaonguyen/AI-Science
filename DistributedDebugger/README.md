@@ -2,43 +2,64 @@
 
 AI-powered bug investigator for distributed microservice systems.
 
-You describe a bug — or paste in a Jira ticket — and an agent does the grunt work of pulling logs, tracing Kafka events, and producing a structured root-cause report. Built to practice **harness engineering** and **RAG** on a problem I actually hit at work: investigating bugs across a stack of microservices where the cause can be anywhere.
+You describe a bug — or paste in a Jira ticket — and an agent does the grunt work of pulling logs, tracing events, and producing a structured root-cause report. Built to practice **harness engineering** and **RAG** on a real problem: investigating bugs across a stack of microservices where the cause can be anywhere.
 
-## Status: Phase 1 (skeleton)
+## Status: Phase 2 (real CloudWatch + RAG)
 
 What works today:
 
 - ReAct loop with OpenAI (`gpt-4o-mini` by default)
-- Freeform bug description via `--desc` or `--desc-file`, optional `--ticket` id for reporting
-- Four tools wired into the agent:
-  - `search_logs` — mock log search (realistic CoCo-style fixtures)
-  - `fetch_kafka_events` — mock Kafka event lookup
+- Freeform bug description via `--desc` or `--desc-file`, optional `--ticket` id
+- Tools:
+  - `search_logs` — **real CloudWatch Logs** via AWS SDK (SSO-aware), with a 4-stage RAG pipeline
+  - `fetch_kafka_events` — still mock (Phase 3 target)
   - `record_hypothesis` — agent declares a working theory, added to the trace
   - `finish_investigation` — typed root-cause report
-- Markdown report rendered to console and written to `investigations/`
-- Streaming step-by-step output so you can watch the agent reason
+- Three swappable retrievers: `keyword`, `semantic`, `hybrid` (default)
+- `--mock` flag to bypass CloudWatch entirely for fast, free iteration
+- Streaming step-by-step output + markdown report written to `investigations/`
 
-What's next (not yet built):
+## The RAG pipeline (Phase 2's learning goldmine)
+
+Every `search_logs` call flows through four stages. The first two are free and deterministic; the last two cost a fraction of a cent.
+
+```
+  Stage 1: Time-window narrowing            ← free, biggest reduction
+  Stage 2: CloudWatch filter pattern        ← free, server-side
+  Stage 3: Chunking + embedding             ← tiny cost
+  Stage 4: Top-K by cosine similarity       ← tiny cost
+```
+
+That ordering is the core RAG lesson — spend deterministic filters first, AI filters last. See `src/DistributedDebugger.Tools/CloudWatch/CloudWatchLogSearchTool.cs` for the pipeline and `SemanticLogRetriever.cs` for the embedding step.
+
+## What's next
 
 | Phase | Feature |
 |---|---|
-| 2 | Real Datadog + CloudWatch tools replacing the mocks |
-| 2 | Keyword pre-filter + time-window narrowing before RAG |
 | 3 | MongoDB document-state and OpenSearch index-state tools |
+| 3 | Real Kafka event lookup (replace `MockKafkaEventTool`) |
 | 4 | LLM-as-judge grader, regression suite, cost/quality dashboard |
 
 ## Quick start
 
 ```bash
-# From AI-Science/DistributedDebugger
+# One-time: log in via SSO so the AWS SDK has credentials
+aws sso login
+
 export OPENAI_API_KEY=sk-...
 
+cd DistributedDebugger
+
+# Free, deterministic run (no AWS, no embeddings) — use while iterating
+dotnet run --project src/DistributedDebugger.Cli -- investigate --mock \
+  --desc "Activity act-789 published at 14:27 UTC but not in content search"
+
+# Real run against your CoCo CloudWatch logs
 dotnet run --project src/DistributedDebugger.Cli -- investigate \
   --ticket COCO-1234 \
-  --desc "Activity act-789 published at 14:27 UTC but not appearing in content search. User reports refreshing doesn't help."
+  --desc "Activity act-789 published at 14:27 UTC but not in content search" \
+  --retriever hybrid
 ```
-
-Output goes to stdout (streaming) and a dated markdown file in `investigations/`.
 
 ## Architecture
 
@@ -47,30 +68,25 @@ Layered the same way as `HarnessArena`:
 ```
 DistributedDebugger.Core     domain models + tool interface
 DistributedDebugger.Tools    the tools the agent can call
+  └─ CloudWatch/             log search tool + RAG retrievers
 DistributedDebugger.Agent    the ReAct loop (OpenAI)
 DistributedDebugger.Cli      CLI entry point + markdown report renderer
 ```
 
-The agent in `InvestigatorAgent.cs` is the core piece. The loop is intentionally
+The agent in `InvestigatorAgent.cs` is the core piece. The loop is deliberately
 very similar to `HarnessArena/OpenAIAgent.cs` — same pattern, different system
 prompt, different tools. That's the whole point of the harness pattern: the loop
 stays provider-agnostic while the tools change per domain.
 
-## Why mocks in Phase 1
+## Auth and cost
 
-Real Datadog/CloudWatch queries cost API quota and network round trips, and they
-make the agent hard to test deterministically. The mock tools return fixtures
-modelled on a real-looking CoCo indexing bug (Kafka event published, consumer
-times out on OpenSearch, DLQ not configured, event silently dropped). That gives
-the agent a concrete story to discover, which is exactly what you want when
-iterating on the agent's prompt and tool descriptions.
+**AWS**: Uses the default credential chain. Works out of the box if your SSO
+session is active. Run `aws sso login` when it expires.
 
-Phase 2 swaps the mocks for real tools with the same `IDebugTool` interface —
-nothing in the agent changes.
+**OpenAI cost per real investigation** (`gpt-4o-mini` + `text-embedding-3-small`):
+- ~200 log events fetched, embedded, top-K retrieved → ~$0.0001
+- ~8 model iterations generating the analysis → ~$0.001
+- **Total: ~$0.001–0.002** (roughly one-tenth of a cent)
 
-## Cost estimate
-
-One investigation with mock tools and `gpt-4o-mini`:
-- ~3-5 tool calls, ~6-10 model iterations
-- ~3k input tokens, ~800 output tokens
-- **~$0.001 per investigation** (roughly one-tenth of a cent)
+Run with `--mock` while iterating on prompts. Switch to real data when you're
+investigating an actual bug.

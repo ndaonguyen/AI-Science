@@ -4,6 +4,7 @@ using DistributedDebugger.Cli;
 using DistributedDebugger.Core.Models;
 using DistributedDebugger.Core.Tools;
 using DistributedDebugger.Tools;
+using DistributedDebugger.Tools.CloudWatch;
 
 if (args.Length == 0 || args[0] is "-h" or "--help")
 {
@@ -22,6 +23,9 @@ var description = ArgValue(args, "--desc");
 var ticketId = ArgValue(args, "--ticket");
 var descFile = ArgValue(args, "--desc-file");
 var outputDir = ArgValue(args, "--output") ?? "investigations";
+var defaultRegion = ArgValue(args, "--region") ?? "ap-southeast-2";
+var retrieverMode = (ArgValue(args, "--retriever") ?? "hybrid").ToLowerInvariant();
+var useMock = args.Contains("--mock");
 
 if (descFile is not null)
 {
@@ -42,8 +46,6 @@ if (description is null && ticketId is null)
 
 if (description is null)
 {
-    // Ticket-only mode: user hasn't pre-fetched the ticket, so we ask them for
-    // the key details interactively. Keeps us honest about what we know.
     Console.WriteLine($"No description provided for ticket {ticketId}. Paste ticket summary below, end with a blank line:");
     var lines = new List<string>();
     string? line;
@@ -66,12 +68,16 @@ if (string.IsNullOrWhiteSpace(openaiKey))
     return 1;
 }
 
-// Phase 1: only mock tools. Real Datadog/CloudWatch wiring comes in Phase 2.
+// Build the log-search tool: mock fixtures, or real CloudWatch with a retriever.
 var hypothesisChannel = Channel.CreateUnbounded<(string, string)>();
-var registry = new ToolRegistry(new IDebugTool[]
+IDebugTool logTool = useMock
+    ? new MockLogSearchTool()
+    : BuildCloudWatchTool(openaiKey, retrieverMode, defaultRegion);
+
+var registry = new ToolRegistry(new[]
 {
-    new MockLogSearchTool(),
-    new MockKafkaEventTool(),
+    logTool,
+    new MockKafkaEventTool(),                     // still mock in Phase 2
     new RecordHypothesisTool(hypothesisChannel),
     new FinishInvestigationTool(),
 });
@@ -91,7 +97,8 @@ Console.CancelKeyPress += (_, e) =>
     cts.Cancel();
 };
 
-Console.WriteLine("=== DistributedDebugger — Phase 1 (mock tools) ===");
+var mode = useMock ? "mock" : $"real CloudWatch · {retrieverMode} retriever";
+Console.WriteLine($"=== DistributedDebugger — Phase 2 ({mode}) ===");
 Console.WriteLine();
 Console.WriteLine("Investigating... (streaming steps below)");
 Console.WriteLine();
@@ -112,7 +119,6 @@ try
     var markdown = ReportWriter.Render(investigation);
     Console.WriteLine(markdown);
 
-    // Persist the markdown and a JSON trace next to it for later inspection.
     Directory.CreateDirectory(outputDir);
     var slug = (investigation.Report.TicketId ?? investigation.Id.ToString("N")[..8])
         .Replace("/", "_").Replace("\\", "_");
@@ -127,6 +133,26 @@ catch (OperationCanceledException)
 {
     Console.Error.WriteLine("Cancelled.");
     return 130;
+}
+finally
+{
+    if (logTool is IDisposable d) d.Dispose();
+}
+
+static IDebugTool BuildCloudWatchTool(string openaiKey, string mode, string defaultRegion)
+{
+    ILogRetriever retriever = mode switch
+    {
+        "keyword"  => new KeywordLogRetriever(),
+        "semantic" => new SemanticLogRetriever(openaiKey),
+        "hybrid"   => new HybridLogRetriever(
+                          new KeywordLogRetriever(),
+                          new SemanticLogRetriever(openaiKey)),
+        _ => throw new ArgumentException(
+                 $"Unknown --retriever '{mode}'. Options: keyword, semantic, hybrid.")
+    };
+
+    return new CloudWatchLogSearchTool(retriever, defaultRegion: defaultRegion);
 }
 
 static string? ArgValue(string[] args, string flag)
@@ -174,20 +200,28 @@ static void PrintUsage()
     Console.WriteLine("DistributedDebugger — AI-powered bug investigator for distributed systems");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  debugger investigate --desc \"<bug description>\"");
-    Console.WriteLine("  debugger investigate --desc-file <path>");
-    Console.WriteLine("  debugger investigate --ticket <id> [--desc \"...\"]");
+    Console.WriteLine("  debugger investigate --desc \"<bug description>\" [options]");
+    Console.WriteLine("  debugger investigate --desc-file <path>           [options]");
+    Console.WriteLine("  debugger investigate --ticket <id> [--desc \"...\"] [options]");
     Console.WriteLine();
     Console.WriteLine("Options:");
     Console.WriteLine("  --desc <text>       Bug description (quoted).");
     Console.WriteLine("  --desc-file <path>  Read description from a file.");
-    Console.WriteLine("  --ticket <id>       Jira/ticket id for reporting. Paired with --desc.");
+    Console.WriteLine("  --ticket <id>       Jira/ticket id for reporting.");
     Console.WriteLine("  --output <folder>   Where to write markdown reports (default: investigations).");
+    Console.WriteLine("  --mock              Use fixture logs instead of real CloudWatch (free, deterministic).");
+    Console.WriteLine("  --retriever <kind>  keyword | semantic | hybrid (default: hybrid).");
+    Console.WriteLine("  --region <region>   Default AWS region (default: ap-southeast-2).");
     Console.WriteLine();
     Console.WriteLine("Env vars:");
     Console.WriteLine("  OPENAI_API_KEY  (required)");
+    Console.WriteLine("  AWS credentials from default profile (~/.aws/config). Run `aws sso login` first.");
     Console.WriteLine();
-    Console.WriteLine("Example:");
+    Console.WriteLine("Examples:");
+    Console.WriteLine("  # Free, fixture-based run for iterating on prompts");
+    Console.WriteLine("  debugger investigate --mock --desc \"act-789 not indexed after publish\"");
+    Console.WriteLine();
+    Console.WriteLine("  # Real CloudWatch with hybrid RAG");
     Console.WriteLine("  debugger investigate --ticket COCO-1234 \\");
-    Console.WriteLine("    --desc \"Activity act-789 published at 14:27 but not appearing in search.\"");
+    Console.WriteLine("    --desc \"Activity act-789 published at 14:27 UTC but not in search\"");
 }
