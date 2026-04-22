@@ -12,7 +12,7 @@ public static class EvalCommand
 {
     public static async Task<int> RunAsync(string[] args, string openAiKey, CancellationToken ct)
     {
-        var casesPath = ArgValue(args, "--cases") ?? "eval-cases";
+        var casesPath = ArgValue(args, "--cases") ?? ResolveDefaultPath("eval-cases");
         var outputPath = ArgValue(args, "--output") ?? "eval-results";
         var judgeModel = ArgValue(args, "--judge-model") ?? "gpt-4o";
         var requestedConfigs = args
@@ -199,5 +199,22 @@ public static class EvalCommand
             if (args[i] == flag) return args[i + 1];
         }
         return null;
+    }
+
+    /// <summary>
+    /// Returns the first existing directory found by walking up from the
+    /// executable's location, falling back to the plain name (relative to cwd).
+    /// </summary>
+    private static string ResolveDefaultPath(string folderName)
+    {
+        var dir = AppContext.BaseDirectory;
+        while (!string.IsNullOrEmpty(dir))
+        {
+            var candidate = Path.Combine(dir, folderName);
+            if (Directory.Exists(candidate))
+                return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        return folderName; // fall back – will produce the original error message
     }
 }

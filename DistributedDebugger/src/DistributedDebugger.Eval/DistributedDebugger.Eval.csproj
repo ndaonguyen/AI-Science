@@ -4,6 +4,11 @@
     <AssemblyName>DistributedDebugger.Eval</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>DistributedDebugger.Eval.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="OpenAI" Version="2.10.0" />
     <PackageReference Include="YamlDotNet" Version="16.2.1" />
   </ItemGroup>
