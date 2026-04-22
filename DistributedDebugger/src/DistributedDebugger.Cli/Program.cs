@@ -5,6 +5,7 @@ using DistributedDebugger.Core.Models;
 using DistributedDebugger.Core.Tools;
 using DistributedDebugger.Tools;
 using DistributedDebugger.Tools.CloudWatch;
+using DistributedDebugger.Tools.HumanLoop;
 
 if (args.Length == 0 || args[0] is "-h" or "--help")
 {
@@ -74,10 +75,16 @@ IDebugTool logTool = useMock
     ? new MockLogSearchTool()
     : BuildCloudWatchTool(openaiKey, retrieverMode, defaultRegion);
 
+// Phase 3 tools: human-in-the-loop data lookups. The agent formulates a query,
+// the CLI prints it, you paste back the result (or 'empty'/'skip').
+var humanProvider = new ConsoleHumanDataProvider();
+
 var registry = new ToolRegistry(new[]
 {
     logTool,
-    new MockKafkaEventTool(),                     // still mock in Phase 2
+    new RequestMongoQueryTool(humanProvider),
+    new RequestOpenSearchQueryTool(humanProvider),
+    new RequestKafkaEventsTool(humanProvider),
     new RecordHypothesisTool(hypothesisChannel),
     new FinishInvestigationTool(),
 });
@@ -98,7 +105,7 @@ Console.CancelKeyPress += (_, e) =>
 };
 
 var mode = useMock ? "mock" : $"real CloudWatch · {retrieverMode} retriever";
-Console.WriteLine($"=== DistributedDebugger — Phase 2 ({mode}) ===");
+Console.WriteLine($"=== DistributedDebugger — Phase 3 ({mode}) ===");
 Console.WriteLine();
 Console.WriteLine("Investigating... (streaming steps below)");
 Console.WriteLine();
@@ -172,7 +179,16 @@ static void PrintEvent(InvestigationEvent ev)
             Console.WriteLine($"  [iter {mc.Iteration}] → model (messages: {mc.PromptMessageCount})");
             break;
         case ToolCallEvent tc:
-            Console.WriteLine($"  [iter {tc.Iteration}] 🔧 {tc.ToolName}({Compact(tc.Input.ToString())})");
+            // For request_* tools the tool itself prints a full prompt box,
+            // so we only show a one-liner here to avoid duplication.
+            if (tc.ToolName.StartsWith("request_"))
+            {
+                Console.WriteLine($"  [iter {tc.Iteration}] 🔧 {tc.ToolName} (awaiting your input below)");
+            }
+            else
+            {
+                Console.WriteLine($"  [iter {tc.Iteration}] 🔧 {tc.ToolName}({Compact(tc.Input.ToString())})");
+            }
             break;
         case ToolResultEvent tr:
             var preview = tr.Output.Length > 120 ? tr.Output[..120] + "..." : tr.Output;
@@ -213,6 +229,17 @@ static void PrintUsage()
     Console.WriteLine("  --retriever <kind>  keyword | semantic | hybrid (default: hybrid).");
     Console.WriteLine("  --region <region>   Default AWS region (default: ap-southeast-2).");
     Console.WriteLine();
+    Console.WriteLine("Tools the agent will use:");
+    Console.WriteLine("  search_logs              — CloudWatch Logs (auto)");
+    Console.WriteLine("  request_mongo_query      — asks you to run a MongoDB find");
+    Console.WriteLine("  request_opensearch_query — asks you to run an OpenSearch query");
+    Console.WriteLine("  request_kafka_events     — asks you to check Kafka via your UI");
+    Console.WriteLine("  record_hypothesis        — agent's working theory (auto)");
+    Console.WriteLine("  finish_investigation     — final root-cause report (auto)");
+    Console.WriteLine();
+    Console.WriteLine("When the agent calls a request_* tool, you'll see the exact query it wants");
+    Console.WriteLine("and can paste the result, type 'empty' for no match, or 'skip' to decline.");
+    Console.WriteLine();
     Console.WriteLine("Env vars:");
     Console.WriteLine("  OPENAI_API_KEY  (required)");
     Console.WriteLine("  AWS credentials from default profile (~/.aws/config). Run `aws sso login` first.");
@@ -221,7 +248,7 @@ static void PrintUsage()
     Console.WriteLine("  # Free, fixture-based run for iterating on prompts");
     Console.WriteLine("  debugger investigate --mock --desc \"act-789 not indexed after publish\"");
     Console.WriteLine();
-    Console.WriteLine("  # Real CloudWatch with hybrid RAG");
+    Console.WriteLine("  # Real investigation with CloudWatch + human-loop queries");
     Console.WriteLine("  debugger investigate --ticket COCO-1234 \\");
     Console.WriteLine("    --desc \"Activity act-789 published at 14:27 UTC but not in search\"");
 }
