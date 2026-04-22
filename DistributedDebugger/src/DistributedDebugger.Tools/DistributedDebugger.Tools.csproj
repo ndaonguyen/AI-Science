@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>DistributedDebugger.Tools</RootNamespace>
+    <AssemblyName>DistributedDebugger.Tools</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DistributedDebugger.Core\DistributedDebugger.Core.csproj" />
+  </ItemGroup>
+</Project>

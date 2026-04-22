@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>DistributedDebugger.Cli</RootNamespace>
+    <AssemblyName>debugger</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DistributedDebugger.Core\DistributedDebugger.Core.csproj" />
+    <ProjectReference Include="..\DistributedDebugger.Tools\DistributedDebugger.Tools.csproj" />
+    <ProjectReference Include="..\DistributedDebugger.Agent\DistributedDebugger.Agent.csproj" />
+  </ItemGroup>
+</Project>
