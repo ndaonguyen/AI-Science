@@ -9,7 +9,5 @@
     <ProjectReference Include="..\DistributedDebugger.Tools\DistributedDebugger.Tools.csproj" />
     <ProjectReference Include="..\DistributedDebugger.Agent\DistributedDebugger.Agent.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Content Include="wwwroot\**" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
+
 </Project>
