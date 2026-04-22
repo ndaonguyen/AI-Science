@@ -546,6 +546,22 @@ button.small { padding: 5px 12px; font-size: 13px; }
 }
 .modal-icon { font-size: 16px; }
 .modal-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* The modal header has a dark background, so the default button.secondary
+   (dark text on transparent) is effectively invisible. Override colours
+   inside the header so buttons have light text on a subtle translucent fill. */
+.modal-header-actions button,
+.modal-header-actions button.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e5e9f0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.modal-header-actions button:hover,
+.modal-header-actions button.secondary:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
 .modal-body {
   overflow-y: auto;
   flex: 1;
