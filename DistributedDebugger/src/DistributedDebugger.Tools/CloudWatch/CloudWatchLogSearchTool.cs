@@ -216,7 +216,7 @@ public sealed class CloudWatchLogSearchTool : IDebugTool, IDisposable
                 all.Add(new LogChunk(
                     Service: service,
                     LogGroup: logGroup,
-                    Timestamp: DateTimeOffset.FromUnixTimeMilliseconds(ev.Timestamp ?? 0),
+                    Timestamp: DateTimeOffset.FromUnixTimeMilliseconds(ev.Timestamp),
                     Text: ev.Message ?? ""));
             }
 
