@@ -152,3 +152,12 @@ DistributedDebugger/src/DistributedDebugger.Eval/obj/project.assets.json
 DistributedDebugger/src/DistributedDebugger.Eval/obj/project.nuget.cache
 DistributedDebugger/src/DistributedDebugger.Eval/obj/project.packagespec.json
 DistributedDebugger/src/DistributedDebugger.Eval/obj/rider.project.restore.info
+*.dll
+*.cache
+*.pdb
+DistributedDebugger/src/DistributedDebugger.Eval/bin/Debug/net9.0/DistributedDebugger.Eval.deps.json
+DistributedDebugger/src/DistributedDebugger.Eval/DistributedDebugger.Eval.csproj
+DistributedDebugger/src/DistributedDebugger.Eval/obj/Debug/net9.0/Distribu.552A4D83.Up2Date
+DistributedDebugger/src/DistributedDebugger.Eval/obj/Debug/net9.0/DistributedDebugger.Eval.csproj.FileListAbsolute.txt
+DistributedDebugger/src/DistributedDebugger.Eval/obj/Debug/net9.0/DistributedDebugger.Eval.sourcelink.json
+DistributedDebugger/src/DistributedDebugger.Eval/obj/rider.project.model.nuget.info

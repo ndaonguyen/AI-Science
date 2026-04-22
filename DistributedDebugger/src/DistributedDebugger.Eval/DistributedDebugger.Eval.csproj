@@ -10,5 +10,6 @@
   <ItemGroup>
     <ProjectReference Include="..\DistributedDebugger.Core\DistributedDebugger.Core.csproj" />
     <ProjectReference Include="..\DistributedDebugger.Agent\DistributedDebugger.Agent.csproj" />
+    <ProjectReference Include="..\DistributedDebugger.Tools\DistributedDebugger.Tools.csproj" />
   </ItemGroup>
 </Project>
