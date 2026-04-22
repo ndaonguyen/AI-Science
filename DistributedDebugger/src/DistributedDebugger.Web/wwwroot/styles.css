@@ -101,7 +101,6 @@ button.secondary:hover { background: var(--bg); }
 
 /* Event feed */
 #events {
-  max-height: 400px;
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -111,6 +110,26 @@ button.secondary:hover { background: var(--bg); }
   line-height: 1.6;
   background: #fbfbfb;
   margin: 8px 0 16px;
+  /* No fixed max-height — the run-scroll-area controls the outer scroll */
+}
+
+/* Scrollable investigation area — everything except the sticky What-next panel */
+.run-scroll-area {
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+
+/* What-next panel sticks to the bottom of the card */
+.run-sticky-footer {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: 8px;
+  z-index: 10;
 }
 .event { margin-bottom: 4px; }
 .event .iter { color: var(--muted); margin-right: 6px; }

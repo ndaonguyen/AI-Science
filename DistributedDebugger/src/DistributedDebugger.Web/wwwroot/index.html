@@ -130,19 +130,25 @@
         <h2>Investigation <span id="sessionIdBadge" class="badge"></span> <span id="modeBadge" class="badge subtle"></span></h2>
         <button id="newBtn" type="button" class="secondary">New investigation</button>
       </div>
-      <div id="events"></div>
 
-      <!-- Raw log preview inside investigation (populated by Preview/more-logs) -->
-      <div id="run-raw-logs-section" class="raw-logs-section hidden">
-        <div class="raw-logs-header">
-          <span id="run-raw-logs-title" class="raw-logs-title"></span>
-          <button type="button" id="run-raw-logs-close" class="secondary small">✕ Close</button>
+      <!-- Scrollable area: events + raw logs + per-turn summaries -->
+      <div class="run-scroll-area">
+        <div id="events"></div>
+
+        <!-- Raw log preview inside investigation -->
+        <div id="run-raw-logs-section" class="raw-logs-section hidden">
+          <div class="raw-logs-header">
+            <span id="run-raw-logs-title" class="raw-logs-title"></span>
+            <button type="button" id="run-raw-logs-close" class="secondary small">✕ Close</button>
+          </div>
+          <div class="raw-logs-hint">💡 Click any row to view detail — then dig into errors at that timestamp</div>
+          <div id="run-raw-logs-table" class="raw-logs-table"></div>
         </div>
-        <div class="raw-logs-hint">💡 Click any row to dig into errors around that timestamp</div>
-        <div id="run-raw-logs-table" class="raw-logs-table"></div>
       </div>
 
-      <div id="turn-summary" class="turn-summary hidden">
+      <!-- Sticky footer: What next? always visible at the bottom -->
+      <div class="run-sticky-footer">
+        <div id="turn-summary" class="turn-summary hidden">
         <h3>Summary</h3>
         <div class="hypothesis"><strong>Hypothesis:</strong> <span id="hypothesis-text"></span></div>
         <ul id="findings"></ul>
@@ -278,6 +284,7 @@
         </div>
         <div id="running-indicator" class="hint hidden">Running turn…</div>
       </div>
+      </div><!-- end run-sticky-footer -->
 
       <div id="paste-panel" class="paste-panel hidden">
         <div class="paste-header">

@@ -133,12 +133,18 @@ document.getElementById('dig-preview').addEventListener('click', async () => {
   }
 });
 
-document.getElementById('dig-analyze').addEventListener('click', () => {
+document.getElementById('dig-analyze').addEventListener('click', async () => {
   const p = getDigParams({ forPreview: false });
   if (!p) return;
   const { services, env, startTime, endTime } = p;
   if (!services.length) { alert('Pick at least one service.'); return; }
   document.getElementById('dig-errors-panel').classList.add('hidden');
+
+  // Show raw logs first (no filter — all logs in the window), then run AI
+  for (const svc of services) {
+    await showRawLogs(svc, env, startTime, endTime, '');
+  }
+
   runStep('dig_errors', { services, environment: env, startTime, endTime });
 });
 
@@ -415,7 +421,8 @@ function showTurnSummary(data) {
     ${findings.length ? `<ul class="tsc-findings">${findings.map(f => `<li>${escape(f)}</li>`).join('')}</ul>` : ''}
   `;
   $events.appendChild(card);
-  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const scrollArea = document.querySelector('.run-scroll-area');
+  if (scrollArea) setTimeout(() => scrollArea.scrollTop = scrollArea.scrollHeight, 50);
 
   // Update the "What next?" panel (always at the bottom, shared across turns).
   $hypothesis.textContent = hyp;
@@ -663,7 +670,9 @@ async function showRawLogs(service, environment, startTime, endTime, filterText)
     if (t) t.textContent = '▶';
   });
 
-  $group.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  // Scroll the investigation area to show the new group
+  const scrollArea = document.querySelector('.run-scroll-area');
+  if (scrollArea) setTimeout(() => scrollArea.scrollTop = scrollArea.scrollHeight, 50);
 
   // ✕ removes the whole group
   $group.querySelector('.raw-logs-group-close').addEventListener('click', () => $group.remove());
