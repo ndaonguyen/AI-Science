@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>DistributedDebugger</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header>
+    <h1>DistributedDebugger</h1>
+    <div class="sub">AI-powered bug investigator · web UI</div>
+  </header>
+
+  <main>
+    <!-- Step 1: the form -->
+    <section id="form-section" class="card">
+      <h2>New investigation</h2>
+      <label>
+        <span>Ticket ID <em>(optional)</em></span>
+        <input type="text" id="ticketId" placeholder="COCO-1234">
+      </label>
+      <label>
+        <span>Bug description</span>
+        <textarea id="description" rows="6"
+          placeholder="Activity act-789 published at 14:27 UTC but not appearing in content search. Refreshing doesn't help. Other activities published before and after are appearing normally."></textarea>
+      </label>
+      <div class="row">
+        <label class="checkbox">
+          <input type="checkbox" id="mock"> Use mock data (no AWS, free)
+        </label>
+        <button id="startBtn" type="button">Start investigation</button>
+      </div>
+      <div class="hint">Tip: narrower descriptions with IDs and timestamps produce better investigations.</div>
+    </section>
+
+    <!-- Step 2: the live event feed -->
+    <section id="run-section" class="card hidden">
+      <div class="row between">
+        <h2>Investigation <span id="sessionIdBadge" class="badge"></span></h2>
+        <button id="newBtn" type="button" class="secondary">New investigation</button>
+      </div>
+      <div id="events"></div>
+
+      <!-- Paste prompt: only shown when the agent calls a request_* tool -->
+      <div id="paste-panel" class="paste-panel hidden">
+        <div class="paste-header">
+          <strong id="paste-source"></strong>
+          <span id="paste-env" class="badge subtle"></span>
+        </div>
+        <div class="paste-reason" id="paste-reason"></div>
+        <pre id="paste-query"></pre>
+        <textarea id="paste-text" rows="6" placeholder="Paste the query result as JSON. Or click 'No match' / 'Decline'."></textarea>
+        <div class="row">
+          <button id="submitPasteBtn" type="button">Submit</button>
+          <button id="emptyBtn" type="button" class="secondary">No match (empty)</button>
+          <button id="skipBtn" type="button" class="secondary">Decline (skip)</button>
+        </div>
+      </div>
+
+      <!-- Final report renders here once the agent finishes -->
+      <div id="report" class="report hidden"></div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

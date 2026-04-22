@@ -1,7 +1,7 @@
 using System.Text;
 using DistributedDebugger.Core.Models;
 
-namespace DistributedDebugger.Cli;
+namespace DistributedDebugger.Core.Reporting;
 
 /// <summary>
 /// Renders a completed investigation as a markdown report. Designed to be
