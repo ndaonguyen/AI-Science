@@ -182,6 +182,7 @@
             <div>
               <div class="custom-range-label">Window around timestamp</div>
               <select id="dig-window" style="margin-top:4px;width:100%">
+                <option value="0">exact timestamp (± 0 — same second only)</option>
                 <option value="1">± 1 minute</option>
                 <option value="2" selected>± 2 minutes</option>
                 <option value="5">± 5 minutes</option>
@@ -296,6 +297,28 @@
       <div id="report" class="report hidden"></div>
     </section>
   </main>
+
+  <!-- CloudWatch-style log detail modal -->
+  <div id="logDetailBackdrop" class="modal-backdrop hidden"></div>
+  <div id="logDetailModal" class="modal hidden">
+    <div class="modal-header">
+      <div class="modal-title">
+        <span class="modal-icon">📋</span>
+        <span>Log event detail</span>
+      </div>
+      <div class="modal-header-actions">
+        <button type="button" id="modalDigBtn" class="secondary small">🔍 Dig into errors at this timestamp</button>
+        <button type="button" id="modalCloseBtn" class="secondary small">✕ Close</button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div class="modal-message" id="modalMessage"></div>
+      <table class="modal-fields" id="modalFields">
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody id="modalFieldsBody"></tbody>
+      </table>
+    </div>
+  </div>
 
   <script src="/app.js"></script>
 </body>

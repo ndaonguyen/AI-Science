@@ -145,13 +145,15 @@ document.getElementById('dig-analyze').addEventListener('click', () => {
 function getDigParams({ forPreview = false } = {}) {
   const isoTs = document.getElementById('dig-ts-iso').value;
   const env   = document.getElementById('dig-env-val').value;
-  const windowMin = parseInt(document.getElementById('dig-window').value, 10) || 2;
+  const windowMin = parseInt(document.getElementById('dig-window').value, 10);
 
   if (!isoTs) { alert('Please click a log row first to select a timestamp.'); return null; }
 
   const center = new Date(isoTs);
-  const startTime = new Date(center - windowMin * 60_000).toISOString();
-  const endTime   = new Date(center + windowMin * 60_000).toISOString();
+  // windowMin=0 → exact timestamp: use ±1 second so CloudWatch gets a valid range
+  const deltaMs   = windowMin === 0 ? 1_000 : windowMin * 60_000;
+  const startTime = new Date(center - deltaMs).toISOString();
+  const endTime   = new Date(center + deltaMs).toISOString();
 
   const services = Array.from(
     document.querySelectorAll('#dig-services input[type=checkbox]:checked')
@@ -336,9 +338,16 @@ function subscribe(sessionId) {
   // Guided-mode-specific events
   es.addEventListener('turn_started', e => {
     const d = JSON.parse(e.data);
+    // Archive the previous What-next panel (keep hypothesis/findings visible — they're now in $events)
     $turnSummary.classList.add('hidden');
+    $moreLogsPanel.classList.add('hidden');
+    document.getElementById('dig-errors-panel').classList.add('hidden');
     $runningIndicator.classList.remove('hidden');
-    appendLine('model-call', '▶ turn', d.action || '', null);
+    // Visual divider so the new turn's events are clearly separated
+    const sep = document.createElement('div');
+    sep.className = 'turn-divider';
+    sep.textContent = `▶ ${d.action || 'turn'}`;
+    $events.appendChild(sep);
   });
   es.addEventListener('turn_summary', e => {
     $runningIndicator.classList.add('hidden');
@@ -365,8 +374,8 @@ async function runStep(action, context) {
   if (!state.sessionId || state.mode !== 'guided') return;
 
   disableNextButtons(true);
-  $turnSummary.classList.add('hidden');
-  $runningIndicator.classList.remove('hidden');
+  // Don't hide $turnSummary here — turn_started SSE event will do it
+  // so the previous summary remains visible until the new turn begins.
 
   const body = { action, context: context || null };
   const res = await fetch(`/api/guided/step/${state.sessionId}`, {
@@ -375,14 +384,11 @@ async function runStep(action, context) {
     body: JSON.stringify(body),
   });
   disableNextButtons(false);
-  $runningIndicator.classList.add('hidden');
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     alert('Turn failed: ' + (err.error || res.statusText));
   }
-  // Actual summary rendering is driven by the SSE `turn_summary` event, not
-  // this response — SSE arrives first in practice.
 }
 
 function disableNextButtons(disabled) {
@@ -390,16 +396,30 @@ function disableNextButtons(disabled) {
 }
 
 function showTurnSummary(data) {
-  $hypothesis.textContent = data.hypothesis || '(none)';
-  $findings.innerHTML = '';
-  (data.findings || []).forEach(f => {
-    const li = document.createElement('li');
-    li.textContent = f;
-    $findings.appendChild(li);
-  });
+  $runningIndicator.classList.add('hidden');
 
-  // Highlight the agent's suggested next step so the user can see what it
-  // recommends without losing the option to pick something else.
+  // Append a permanent summary card to the events stream — never overwritten.
+  const card = document.createElement('div');
+  card.className = 'turn-summary-card';
+
+  const hyp = data.hypothesis || '(none)';
+  const findings = (data.findings || []);
+  const tokens = (data.inputTokens || 0) + (data.outputTokens || 0);
+
+  card.innerHTML = `
+    <div class="tsc-header">
+      <span class="tsc-label">Summary</span>
+      ${tokens ? `<span class="tsc-tokens">${tokens.toLocaleString()} tokens</span>` : ''}
+    </div>
+    <div class="tsc-hypothesis"><strong>Hypothesis:</strong> ${escape(hyp)}</div>
+    ${findings.length ? `<ul class="tsc-findings">${findings.map(f => `<li>${escape(f)}</li>`).join('')}</ul>` : ''}
+  `;
+  $events.appendChild(card);
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  // Update the "What next?" panel (always at the bottom, shared across turns).
+  $hypothesis.textContent = hyp;
+  $findings.innerHTML = findings.map(f => `<li>${escape(f)}</li>`).join('');
   $nextButtons.querySelectorAll('button').forEach(b => {
     b.classList.toggle('suggested', b.dataset.action === data.suggestedNext);
   });
@@ -489,6 +509,113 @@ function showReport(data) {
   $report.appendChild(pre);
 }
 
+/**
+ * Open the CloudWatch-style log detail modal.
+ * Shows the clean log message + all JSON envelope fields in a table.
+ */
+function openLogDetailModal(timestamp, environment, message, rawJson) {
+  const $backdrop = document.getElementById('logDetailBackdrop');
+  const $modal    = document.getElementById('logDetailModal');
+  const $msg      = document.getElementById('modalMessage');
+  const $tbody    = document.getElementById('modalFieldsBody');
+  const $digBtn   = document.getElementById('modalDigBtn');
+
+  // Message at the top
+  $msg.textContent = message;
+
+  // Parse JSON envelope fields
+  $tbody.innerHTML = '';
+  const addRow = (field, value) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="modal-field-key">${escape(field)}</td>
+                    <td class="modal-field-val">${escape(String(value))}</td>`;
+    $tbody.appendChild(tr);
+  };
+
+  // Always show timestamp + stream first
+  addRow('@timestamp', timestamp);
+
+  try {
+    const obj = JSON.parse(rawJson);
+    // Flatten all top-level fields, and nested aws_tags
+    for (const [k, v] of Object.entries(obj)) {
+      if (k === 'aws_tags' && typeof v === 'object' && v !== null) {
+        for (const [tk, tv] of Object.entries(v)) {
+          addRow(`aws_tags.${tk}`, tv);
+        }
+      } else {
+        addRow(k, typeof v === 'object' ? JSON.stringify(v) : v);
+      }
+    }
+  } catch {
+    addRow('@raw', rawJson);
+  }
+
+  // Wire the "Dig into errors" button inside the modal
+  $digBtn.onclick = () => {
+    closeLogDetailModal();
+    if (state.sessionId) {
+      openDigPanelFromRow(timestamp, environment);
+    }
+  };
+  // Hide dig button if no active session
+  $digBtn.style.display = state.sessionId ? '' : 'none';
+
+  $backdrop.classList.remove('hidden');
+  $modal.classList.remove('hidden');
+  // Reset position to centered (in case it was dragged before)
+  $modal.style.left      = '';
+  $modal.style.top       = '';
+  $modal.style.transform = '';
+}
+
+function closeLogDetailModal() {
+  document.getElementById('logDetailBackdrop').classList.add('hidden');
+  document.getElementById('logDetailModal').classList.add('hidden');
+}
+
+document.getElementById('modalCloseBtn').addEventListener('click', closeLogDetailModal);
+// Only close when clicking the backdrop itself, not when click bubbles from modal
+document.getElementById('logDetailBackdrop').addEventListener('click', closeLogDetailModal);
+document.getElementById('logDetailModal').addEventListener('click', e => e.stopPropagation());
+// Close on Escape
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLogDetailModal(); });
+
+// ---- Drag the modal by its header ----
+(function () {
+  const modal  = document.getElementById('logDetailModal');
+  const handle = modal.querySelector('.modal-header');
+  let dragging = false, ox = 0, oy = 0;
+
+  handle.style.cursor = 'move';
+
+  handle.addEventListener('mousedown', e => {
+    // Don't start drag when clicking buttons inside the header
+    if (e.target.closest('button')) return;
+    dragging = true;
+
+    // Switch from translate(-50%,-50%) to explicit top/left on first drag
+    if (modal.style.left === '') {
+      const r = modal.getBoundingClientRect();
+      modal.style.left      = r.left + 'px';
+      modal.style.top       = r.top  + 'px';
+      modal.style.transform = 'none';
+    }
+
+    ox = e.clientX - modal.getBoundingClientRect().left;
+    oy = e.clientY - modal.getBoundingClientRect().top;
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    modal.style.left = (e.clientX - ox) + 'px';
+    modal.style.top  = (e.clientY - oy) + 'px';
+  });
+
+  document.addEventListener('mouseup', () => { dragging = false; });
+})();
+
 // ---- raw log preview ----
 async function previewLogs() {
   const services = Array.from(document.querySelectorAll('input[name=service]:checked'))
@@ -522,18 +649,35 @@ async function showRawLogs(service, environment, startTime, endTime, filterText)
   const $group = document.createElement('div');
   $group.className = 'raw-logs-group';
   $group.innerHTML = `<div class="raw-logs-group-header">
+    <button type="button" class="raw-logs-group-toggle" title="Collapse/expand">▼</button>
     <span class="raw-logs-group-title">Loading ${escape(service)} …</span>
     <button type="button" class="raw-logs-group-close secondary small" title="Remove this result">✕</button>
   </div>
   <div class="raw-logs-group-body"><div class="raw-logs-loading">Fetching from CloudWatch…</div></div>`;
   $table.appendChild($group);
+
+  // Collapse all previous groups so the new one has focus
+  $table.querySelectorAll('.raw-logs-group:not(:last-child) .raw-logs-group-body').forEach(b => {
+    b.classList.add('collapsed');
+    const t = b.closest('.raw-logs-group').querySelector('.raw-logs-group-toggle');
+    if (t) t.textContent = '▶';
+  });
+
   $group.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-  // Wire the ✕ button to remove just this group
+  // ✕ removes the whole group
   $group.querySelector('.raw-logs-group-close').addEventListener('click', () => $group.remove());
 
+  // ▼/▶ collapses/expands the body
+  const $toggle = $group.querySelector('.raw-logs-group-toggle');
+  const $body   = $group.querySelector('.raw-logs-group-body');
+  $toggle.addEventListener('click', () => {
+    const collapsed = $body.classList.toggle('collapsed');
+    $toggle.textContent = collapsed ? '▶' : '▼';
+  });
+
   const $groupTitle = $group.querySelector('.raw-logs-group-title');
-  const $groupBody  = $group.querySelector('.raw-logs-group-body');
+  const $groupBody  = $body;
 
   try {
     const res = await fetch('/api/logs/raw', {
@@ -563,26 +707,29 @@ async function showRawLogs(service, environment, startTime, endTime, filterText)
       const msg = filterText
         ? escape(ev.message).replace(new RegExp(escapeRegex(filterText), 'gi'), m => `<mark>${m}</mark>`)
         : escape(ev.message);
-      return `<div class="raw-log-row" data-ts="${escape(ev.timestamp)}" data-env="${escape(environment)}" title="Click to dig into errors around this timestamp">
+      const rawJsonEncoded = encodeURIComponent(ev.rawJson || '{}');
+      return `<div class="raw-log-row"
+          data-ts="${escape(ev.timestamp)}"
+          data-env="${escape(environment)}"
+          data-raw="${rawJsonEncoded}"
+          data-msg="${escape(ev.message)}"
+          title="Click to view full log detail">
         <span class="raw-log-ts">${escape(ev.timestamp)}</span>
         <span class="raw-log-msg">${msg}</span>
-        <span class="raw-log-dig-hint">🔍</span>
+        <span class="raw-log-dig-hint">📋</span>
       </div>`;
     }).join('');
 
     $groupBody.innerHTML = rows;
 
-    // Wire row clicks — only available in run mode
-    if (inRun) {
-      $groupBody.querySelectorAll('.raw-log-row').forEach(row => {
-        row.addEventListener('click', () => {
-          // Clear selected state across ALL groups
-          document.querySelectorAll(`#${tableId} .raw-log-row`).forEach(r => r.classList.remove('selected'));
-          row.classList.add('selected');
-          openDigPanelFromRow(row.dataset.ts, row.dataset.env);
-        });
+    // Wire row clicks — open detail modal
+    $groupBody.querySelectorAll('.raw-log-row').forEach(row => {
+      row.addEventListener('click', () => {
+        document.querySelectorAll(`#${tableId} .raw-log-row`).forEach(r => r.classList.remove('selected'));
+        row.classList.add('selected');
+        openLogDetailModal(row.dataset.ts, row.dataset.env, row.dataset.msg, decodeURIComponent(row.dataset.raw));
       });
-    }
+    });
   } catch (err) {
     $groupBody.innerHTML = `<div class="raw-logs-error">Network error: ${escape(err.message)}</div>`;
     $groupTitle.textContent = `${service} — network error`;

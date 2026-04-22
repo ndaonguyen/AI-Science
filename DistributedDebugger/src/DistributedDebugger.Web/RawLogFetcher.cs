@@ -50,7 +50,8 @@ public static class RawLogFetcher
                     Timestamp: DateTimeOffset.FromUnixTimeMilliseconds(ev.Timestamp)
                                             .ToString("yyyy-MM-dd HH:mm:ss.fff") + " UTC",
                     Message:   ExtractLogText(ev.Message ?? ""),
-                    Stream:    ev.LogStreamName ?? ""));
+                    Stream:    ev.LogStreamName ?? "",
+                    RawJson:   ev.Message ?? ""));
             }
             request.NextToken = response.NextToken;
             if (results.Count >= limit) break;
@@ -104,7 +105,7 @@ public static class RawLogFetcher
     }
 }
 
-public sealed record RawLogEvent(string Timestamp, string Message, string Stream);
+public sealed record RawLogEvent(string Timestamp, string Message, string Stream, string RawJson = "");
 
 public sealed record RawLogsRequest(
     string Service,

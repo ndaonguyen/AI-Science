@@ -35,6 +35,8 @@ h2 { font-size: 16px; margin: 0 0 12px; }
   margin-bottom: 16px;
 }
 .hidden { display: none; }
+.modal-backdrop.hidden,
+.modal.hidden { display: none !important; }
 
 label {
   display: block;
@@ -460,3 +462,159 @@ button.small { padding: 5px 12px; font-size: 13px; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* ---- CloudWatch-style log detail modal ---- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 100;
+}
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 101;
+  width: min(860px, 95vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.28);
+  overflow: hidden;
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: #1e1e2e;
+  flex-shrink: 0;
+  gap: 12px;
+}
+.modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #cdd6f4;
+}
+.modal-icon { font-size: 16px; }
+.modal-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.modal-body {
+  overflow-y: auto;
+  flex: 1;
+}
+.modal-message {
+  padding: 14px 18px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  color: #1e1e2e;
+  background: #f0f4ff;
+  border-bottom: 1px solid #d0d8f0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+}
+.modal-fields {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.modal-fields thead tr {
+  background: #f5f5f5;
+  border-bottom: 2px solid #e0e0e0;
+}
+.modal-fields th {
+  padding: 8px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #666;
+}
+.modal-fields tbody tr { border-bottom: 1px solid #f0f0f0; }
+.modal-fields tbody tr:hover { background: #f8f9ff; }
+.modal-field-key {
+  padding: 7px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #1a237e;
+  font-weight: 600;
+  white-space: nowrap;
+  width: 220px;
+  vertical-align: top;
+}
+.modal-field-val {
+  padding: 7px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #333;
+  word-break: break-all;
+}
+/* ---- Per-turn summary card (appended to events stream) ---- */
+.turn-divider {
+  margin: 14px 0 6px;
+  padding: 5px 10px;
+  background: #e8f0fe;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a237e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.turn-summary-card {
+  margin: 10px 0;
+  padding: 12px 14px;
+  background: #f8f9ff;
+  border: 1px solid #d0d8f0;
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+}
+.tsc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.tsc-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+}
+.tsc-tokens {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.tsc-hypothesis {
+  font-size: 13px;
+  color: var(--fg);
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+.tsc-findings {
+  margin: 6px 0 0 18px;
+  padding: 0;
+  font-size: 12px;
+  color: #444;
+  line-height: 1.6;
+}
+/* Collapse/expand for raw log groups */
+.raw-logs-group-toggle {
+  background: transparent;
+  border: none;
+  color: #89b4fa;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0 6px 0 0;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.raw-logs-group-toggle:hover { color: #cdd6f4; }
+.raw-logs-group-body.collapsed { display: none; }
