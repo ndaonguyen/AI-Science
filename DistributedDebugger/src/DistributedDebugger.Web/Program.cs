@@ -54,7 +54,7 @@ app.MapPost("/api/logs/raw", async (RawLogsRequest req, CancellationToken ct) =>
     try
     {
         var events = await RawLogFetcher.FetchAsync(
-            region, logGroup, profile, req.FilterText ?? "", start, end, limit: 200, ct);
+            region, logGroup, profile, req.FilterText ?? "", start, end, limit: 1000, ct);
         return Results.Ok(new { logGroup, start, end, count = events.Count, events });
     }
     catch (Exception ex)

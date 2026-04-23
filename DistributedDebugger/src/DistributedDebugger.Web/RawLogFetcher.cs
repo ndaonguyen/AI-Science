@@ -34,7 +34,7 @@ public static class RawLogFetcher
             LogGroupName = logGroup,
             StartTime    = start.ToUnixTimeMilliseconds(),
             EndTime      = end.ToUnixTimeMilliseconds(),
-            Limit        = Math.Min(limit, 500),
+            Limit        = 500, // CloudWatch max per page
         };
 
         if (!string.IsNullOrWhiteSpace(filterText))
