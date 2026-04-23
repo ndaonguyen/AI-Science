@@ -140,7 +140,7 @@ public sealed class CloudWatchLogSearchTool : IDebugTool, IDisposable
 
         Console.Error.WriteLine(
             $"[CloudWatch] search: service={service} env={environment} " +
-            $"window={start:yyyy-MM-dd HH:mm}Z → {end:yyyy-MM-dd HH:mm}Z " +
+            $"window={start:yyyy-MM-dd HH:mm:ss.fff}Z → {end:yyyy-MM-dd HH:mm:ss.fff}Z " +
             $"filter='{filterPattern}'");
 
         if (end <= start)
@@ -284,7 +284,7 @@ public sealed class CloudWatchLogSearchTool : IDebugTool, IDisposable
     {
         var header =
             $"Log group: {logGroup}\n" +
-            $"Window: {start:yyyy-MM-dd HH:mm}Z → {end:yyyy-MM-dd HH:mm}Z\n" +
+            $"Window: {start:yyyy-MM-dd HH:mm:ss.fff}Z → {end:yyyy-MM-dd HH:mm:ss.fff}Z\n" +
             $"Fetched {totalFetched} events, showing top {top.Count} by relevance:\n";
 
         var body = string.Join("\n", top.Select(c => c.Render()));
