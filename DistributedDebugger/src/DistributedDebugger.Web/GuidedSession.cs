@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Threading.Channels;
 using DistributedDebugger.Agent;
 using DistributedDebugger.Core.Models;
@@ -52,6 +53,15 @@ public sealed class GuidedSession : IDisposable
     // and exposed so /api/guided/cancel can request graceful abort. Swapped
     // out between turns so cancelling one turn never affects the next.
     public CancellationTokenSource? CurrentTurnCts { get; set; }
+
+    // Per-turn time window override. When non-null, any search_logs tool
+    // call during this turn has its startTime/endTime stomped with these
+    // exact ISO strings — regardless of what the LLM emits. Used by
+    // dig_errors (and any other action that sends a precise window in
+    // GuidedStepContext) because LLMs routinely rewrite one or both
+    // timestamps despite being told verbatim. Cleared in the step
+    // handler's finally block so a future turn is unconstrained.
+    public (string Start, string End)? TurnTimeWindowOverride { get; set; }
 
     public GuidedSession(
         string id,
@@ -158,13 +168,19 @@ public static class GuidedSessionLauncher
         GuidedSession? pendingSession = null;
         var humanProvider = new LazyWebHumanDataProvider(() => pendingSession!);
 
-        IDebugTool logTool = request.Mock
+        IDebugTool rawLogTool = request.Mock
             ? new MockLogSearchTool()
             : new CloudWatchLogSearchTool(
                 retriever: new HybridLogRetriever(
                     new KeywordLogRetriever(),
                     new SemanticLogRetriever(openaiKey)),
                 defaultRegion: request.Region ?? "ap-southeast-2");
+
+        // Wrap the log tool so time-window overrides from /api/guided/step
+        // actually enforce on the outgoing CloudWatch call. The wrapper reads
+        // the session's TurnTimeWindowOverride lazily, so we're fine that
+        // `pendingSession` isn't assigned yet at construction time.
+        IDebugTool logTool = new LazyEnforcingLogTool(rawLogTool, () => pendingSession!);
 
         var toolRegistry = new ToolRegistry(new[]
         {
@@ -188,6 +204,43 @@ public static class GuidedSessionLauncher
         pendingSession = session;
         registry.Register(session);
         return session;
+    }
+}
+
+/// <summary>
+/// Adapter that resolves its containing <see cref="GuidedSession"/> lazily
+/// via a closure, then delegates to a <see cref="TimeWindowEnforcingTool"/>
+/// built against that session. Exists because the tool list is constructed
+/// BEFORE the session object does (so we can wire everything up in one
+/// expression tree), meaning we can't hand the session in directly.
+/// </summary>
+internal sealed class LazyEnforcingLogTool : IDebugTool, IDisposable
+{
+    private readonly IDebugTool _inner;
+    private readonly Func<GuidedSession> _getSession;
+    private TimeWindowEnforcingTool? _wrapper;
+
+    public LazyEnforcingLogTool(IDebugTool inner, Func<GuidedSession> getSession)
+    {
+        _inner = inner;
+        _getSession = getSession;
+    }
+
+    public string Name => _inner.Name;
+    public string Description => _inner.Description;
+    public JsonElement InputSchema => _inner.InputSchema;
+
+    public Task<ToolExecutionResult> ExecuteAsync(JsonElement input, CancellationToken ct)
+    {
+        _wrapper ??= new TimeWindowEnforcingTool(_inner, _getSession());
+        return _wrapper.ExecuteAsync(input, ct);
+    }
+
+    public void Dispose()
+    {
+        // Dispose the inner tool directly — the wrapper doesn't own any
+        // additional disposable state, so there's nothing else to clean up.
+        if (_inner is IDisposable d) d.Dispose();
     }
 }
 
