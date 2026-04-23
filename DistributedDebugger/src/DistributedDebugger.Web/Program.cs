@@ -404,12 +404,18 @@ static string BuildTimeRangeClause(GuidedStepContext? ctx)
     if (ctx is null) return "";
     var start = ctx.StartTime;
     var end   = ctx.EndTime;
+    // We send timestamps to the LLM as labelled, quoted, copy-paste-ready
+    // values so it passes them through verbatim as the search_logs tool's
+    // startTime / endTime fields. Previous freeform phrasing ("for the
+    // time window X to Y") led the model to drop or round one end, which
+    // produced lopsided windows — a ± 1 min pick would fetch only logs
+    // BEFORE the timestamp because the model substituted `now` for endTime.
     if (!string.IsNullOrWhiteSpace(start) && !string.IsNullOrWhiteSpace(end))
-        return $" for the time window {start} to {end}";
+        return $" with startTime=\"{start}\" and endTime=\"{end}\" (use these EXACT values verbatim)";
     if (!string.IsNullOrWhiteSpace(start))
-        return $" starting from {start}";
+        return $" with startTime=\"{start}\" (use this EXACT value verbatim)";
     if (!string.IsNullOrWhiteSpace(end))
-        return $" up to {end}";
+        return $" with endTime=\"{end}\" (use this EXACT value verbatim)";
     return "";
 }
 
