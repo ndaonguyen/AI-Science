@@ -177,8 +177,15 @@ function getDigParams({ forPreview = false } = {}) {
   const center = new Date(isoTs);
   // windowMin=0 → exact timestamp: use ±1 second so CloudWatch gets a valid range
   const deltaMs   = windowMin === 0 ? 1_000 : windowMin * 60_000;
-  const startTime = new Date(center - deltaMs).toISOString();
-  const endTime   = new Date(center + deltaMs).toISOString();
+  // NOTE: use .getTime() explicitly on both sides. `center + deltaMs` is a
+  // JS footgun: the + operator coerces the Date to a STRING, producing
+  // garbage like "Thu Apr 23 2026 01:50:15 GMT+000060000" which — after
+  // round-tripping through Date parsing — drops the milliseconds (endTime
+  // comes out as 01:50:15.000 instead of 01:51:15.161). The minus operator
+  // happens to work because it forces numeric coercion, which is why the
+  // start time looked correct and only the end was wrong.
+  const startTime = new Date(center.getTime() - deltaMs).toISOString();
+  const endTime   = new Date(center.getTime() + deltaMs).toISOString();
 
   const services = Array.from(
     document.querySelectorAll('#dig-services input[type=checkbox]:checked')
