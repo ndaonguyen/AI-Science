@@ -41,14 +41,21 @@ const $runningIndicator = document.getElementById('running-indicator');
 const $runningRow = document.getElementById('running-row');
 const $cancelTurnBtn = document.getElementById('cancelTurnBtn');
 
-$cancelTurnBtn.addEventListener('click', async () => {
-  if (!state.sessionId) return;
-  $cancelTurnBtn.disabled = true;
-  $cancelTurnBtn.textContent = 'Cancelling…';
-  try {
-    await fetch(`/api/guided/cancel/${state.sessionId}`, { method: 'POST' });
-  } catch { /* ignore; the UI will unstick via turn_cancelled SSE or the pending fetch's rejection */ }
-});
+// Guard: if the Cancel button isn't in the DOM (stale cached HTML, or a
+// future layout change), we want the REST of app.js to keep working.
+// Prior version threw on null.addEventListener, which halted the whole
+// script — including the Start button wiring. That's how a cosmetic
+// element ended up breaking the whole page.
+if ($cancelTurnBtn) {
+  $cancelTurnBtn.addEventListener('click', async () => {
+    if (!state.sessionId) return;
+    $cancelTurnBtn.disabled = true;
+    $cancelTurnBtn.textContent = 'Cancelling…';
+    try {
+      await fetch(`/api/guided/cancel/${state.sessionId}`, { method: 'POST' });
+    } catch { /* unsticks via turn_cancelled SSE or the pending fetch's rejection */ }
+  });
+}
 
 // ---- wiring ----
 document.querySelectorAll('input[name=mode]').forEach(r =>
@@ -417,10 +424,13 @@ function disableNextButtons(disabled) {
 /// Show or hide the "Running turn…" indicator + Cancel button. Centralised
 /// so every code path that kicks off or ends a turn flips the same thing.
 function showRunning(isRunning) {
+  if (!$runningRow) return;
   if (isRunning) {
     $runningRow.classList.remove('hidden');
-    $cancelTurnBtn.disabled = false;
-    $cancelTurnBtn.textContent = 'Cancel';
+    if ($cancelTurnBtn) {
+      $cancelTurnBtn.disabled = false;
+      $cancelTurnBtn.textContent = 'Cancel';
+    }
   } else {
     $runningRow.classList.add('hidden');
   }
