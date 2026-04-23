@@ -244,6 +244,17 @@ app.MapPost("/api/guided/step/{sessionId}",
     var turnCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
     session.CurrentTurnCts = turnCts;
 
+    // If the browser pinned a specific time window (dig_errors, or more_logs
+    // with a custom range), set a per-turn override so the tool wrapper
+    // stomps whatever values the LLM tries to emit. Without this the LLM
+    // frequently rewrites one end of the window — producing lopsided search
+    // results even when the prompt says 'use these exact values'.
+    var ctx = req.Context;
+    if (!string.IsNullOrWhiteSpace(ctx?.StartTime) && !string.IsNullOrWhiteSpace(ctx?.EndTime))
+    {
+        session.TurnTimeWindowOverride = (ctx!.StartTime!, ctx.EndTime!);
+    }
+
     try
     {
         var instruction = BuildInstruction(req);
@@ -308,6 +319,7 @@ app.MapPost("/api/guided/step/{sessionId}",
     {
         session.TurnInProgress = false;
         session.CurrentTurnCts = null;
+        session.TurnTimeWindowOverride = null;
         turnCts.Dispose();
     }
 });
