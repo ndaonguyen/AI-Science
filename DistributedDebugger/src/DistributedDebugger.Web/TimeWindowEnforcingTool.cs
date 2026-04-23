@@ -45,8 +45,26 @@ internal sealed class TimeWindowEnforcingTool : IDebugTool, IDisposable
         var override_ = _session.TurnTimeWindowOverride;
         if (override_ is null)
         {
-            // No override for this turn — standard behaviour.
+            // No override for this turn — standard behaviour. Surface this
+            // fact in the event feed so 'why isn't enforcement working' is
+            // easy to diagnose — typically it means the browser didn't send
+            // a time context (dig_errors without a clicked row, for example).
+            _session.AgentEvents.Writer.TryWrite(new SessionEvent("diagnostic",
+                new { message = $"[time-window] no override set; LLM values used as-is for {_inner.Name}" }));
             return await _inner.ExecuteAsync(input, ct);
+        }
+
+        // Capture what the LLM actually emitted so we can show a before/after
+        // in the event feed. Helps confirm to the user that enforcement ran
+        // and shows exactly what was rewritten.
+        string llmStart = "(missing)";
+        string llmEnd = "(missing)";
+        if (input.ValueKind == JsonValueKind.Object)
+        {
+            if (input.TryGetProperty("startTime", out var s) && s.ValueKind == JsonValueKind.String)
+                llmStart = s.GetString() ?? "(missing)";
+            if (input.TryGetProperty("endTime", out var e) && e.ValueKind == JsonValueKind.String)
+                llmEnd = e.GetString() ?? "(missing)";
         }
 
         // Rebuild the JSON with overridden startTime/endTime while preserving
@@ -63,23 +81,27 @@ internal sealed class TimeWindowEnforcingTool : IDebugTool, IDisposable
             }
         }
 
-        // Emit the forced values as string JSON. Using JsonSerializer.Serialize
-        // on a string handles escaping correctly.
         using var startDoc = JsonDocument.Parse(JsonSerializer.Serialize(override_.Value.Start));
         using var endDoc   = JsonDocument.Parse(JsonSerializer.Serialize(override_.Value.End));
         rewritten["startTime"] = startDoc.RootElement.Clone();
         rewritten["endTime"]   = endDoc.RootElement.Clone();
 
-        // Serialise back to a JsonElement the inner tool will parse.
         var json = JsonSerializer.Serialize(rewritten);
         using var newDoc = JsonDocument.Parse(json);
         var newInput = newDoc.RootElement.Clone();
 
-        // Leave a server-side breadcrumb in stderr so it's obvious in Rider's
-        // run output whether enforcement kicked in for a given call.
+        // Server-side breadcrumb (Rider run output).
         Console.Error.WriteLine(
-            $"[TimeWindowEnforcing] overrode startTime/endTime for {_inner.Name}: " +
-            $"{override_.Value.Start} → {override_.Value.End}");
+            $"[TimeWindowEnforcing] {_inner.Name}: " +
+            $"LLM said start={llmStart} end={llmEnd}; " +
+            $"forced start={override_.Value.Start} end={override_.Value.End}");
+
+        // User-facing breadcrumb (event feed). Visible in the UI so the user
+        // can confirm that enforcement actually ran on each call.
+        _session.AgentEvents.Writer.TryWrite(new SessionEvent("diagnostic", new
+        {
+            message = $"[time-window] overrode {_inner.Name}: LLM start={llmStart} → {override_.Value.Start}, LLM end={llmEnd} → {override_.Value.End}"
+        }));
 
         return await _inner.ExecuteAsync(newInput, ct);
     }

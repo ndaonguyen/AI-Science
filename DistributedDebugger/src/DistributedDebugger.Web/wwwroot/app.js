@@ -386,6 +386,13 @@ function subscribe(sessionId) {
     // never fires on a cancelled turn.
     $turnSummary.classList.remove('hidden');
   });
+  // Server-side breadcrumb (e.g. time window enforcement) — renders as a
+  // muted line in the event feed. Never a turn-blocking event.
+  es.addEventListener('diagnostic', e => {
+    if (!e.data) return;
+    const d = JSON.parse(e.data);
+    appendLine('model-call', 'ⓘ diagnostic', d.message || '');
+  });
 }
 
 function closeStream() {
