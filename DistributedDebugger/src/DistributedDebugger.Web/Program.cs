@@ -255,6 +255,16 @@ app.MapPost("/api/guided/step/{sessionId}",
         session.TurnTimeWindowOverride = (ctx!.StartTime!, ctx.EndTime!);
     }
 
+    // Same idea for CloudWatch FilterPattern: when the user typed something
+    // in the filter box on the form, we want exactly that string used as
+    // the AWS FilterPattern, not whatever the LLM paraphrases it into. The
+    // wrapper handles the small CloudWatch-specific syntax adjustments
+    // (quoting multi-word phrases) — we just pass through the raw text.
+    if (!string.IsNullOrWhiteSpace(ctx?.FilterText))
+    {
+        session.TurnFilterPatternOverride = ctx!.FilterText;
+    }
+
     try
     {
         var instruction = BuildInstruction(req);
@@ -320,6 +330,7 @@ app.MapPost("/api/guided/step/{sessionId}",
         session.TurnInProgress = false;
         session.CurrentTurnCts = null;
         session.TurnTimeWindowOverride = null;
+        session.TurnFilterPatternOverride = null;
         turnCts.Dispose();
     }
 });
