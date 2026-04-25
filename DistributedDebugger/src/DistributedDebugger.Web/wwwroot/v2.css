@@ -259,6 +259,119 @@ button.small { width: auto; font-size: 11px; padding: 4px 10px; }
 .suspicious li { margin-bottom: 6px; font-size: 12px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
+/* ---- Evidence panel ---- */
+.evidence-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+.evidence-buttons button {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+}
+
+/* The form is hidden by default; openEvidenceForm() reveals it next to
+   the +Add buttons. Lives inside the same card as the buttons so the
+   user's eye stays in context. */
+.evidence-form {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #f8fafc;
+}
+.evidence-form h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.evidence-form label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.evidence-form input,
+.evidence-form textarea {
+  width: 100%;
+  margin-top: 4px;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.evidence-form-actions {
+  display: flex;
+  gap: 8px;
+}
+.evidence-form-actions button { width: auto; flex: 0 0 auto; }
+
+/* Saved evidence renders as cards. Coloured left border picks out the
+   kind at a glance — green/blue/orange/grey for mongo/opensearch/kafka/note. */
+.evidence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.evidence-card {
+  border: 1px solid var(--border);
+  border-left: 4px solid #94a3b8;
+  border-radius: 4px;
+  background: #ffffff;
+  overflow: hidden;
+}
+.evidence-card.evidence-mongo      { border-left-color: #16a34a; }
+.evidence-card.evidence-opensearch { border-left-color: #2563eb; }
+.evidence-card.evidence-kafka      { border-left-color: #f97316; }
+.evidence-card.evidence-note       { border-left-color: #94a3b8; }
+
+.evidence-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 10px;
+  background: #f1f5f9;
+  font-size: 12px;
+}
+.evidence-kind {
+  font-weight: 600;
+  color: #0f172a;
+}
+.evidence-title {
+  color: #475569;
+  font-style: italic;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evidence-delete {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #94a3b8;
+  padding: 0 6px;
+  font-size: 12px;
+  cursor: pointer;
+  margin: 0;
+  width: auto;
+  border-radius: 3px;
+}
+.evidence-delete:hover {
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+.evidence-content {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #1e293b;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
 /* The 'filterPattern: "..."' label sits next to the Logs heading. Default
    text colour washes out on the white card; give it a low-key but
    readable mono treatment. */
