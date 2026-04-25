@@ -117,6 +117,22 @@ function recordKey(log) {
   return log.eventId || `${log.timestamp}|${log.service}|${log.message?.slice(0, 80)}`;
 }
 
+// Parse a fetch Response into JSON, gracefully handling cases where the
+// server returned non-JSON (or an empty body) — e.g. an unhandled 500. The
+// browser's default Response.json() throws "Unexpected end of JSON input",
+// which is much less actionable than "HTTP 500: <body text>".
+async function safeJson(res) {
+  const text = await res.text();
+  if (!text) {
+    throw new Error(`HTTP ${res.status} with empty body — check the server console for the stack trace`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`);
+  }
+}
+
 // ---- actions ----
 async function onFilter() {
   const services = selectedServices();
@@ -138,7 +154,7 @@ async function onFilter() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
     mergeLogs(data.logs || []);
@@ -180,7 +196,7 @@ async function onExtend() {
           limit: 500,
         }),
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       added += mergeLogs(data.logs || []);
     }
@@ -216,7 +232,7 @@ async function onAnalyze() {
         logs: Array.from(state.logs.values()),
       }),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     renderAnalysis(data);
     $analysisCost.textContent = `tokens: ${data.inputTokens} in / ${data.outputTokens} out`;
