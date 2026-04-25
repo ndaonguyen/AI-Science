@@ -82,13 +82,30 @@ public static class V2Endpoints
 
                 var pivot = req.Around!.Value;
                 var minutes = req.WindowMinutes ?? 1;
-                // ±0 is a valid user choice ("just this second") but CloudWatch
-                // rejects start==end. Floor to 30 seconds either side, which
-                // catches anything stamped within the same second the user
-                // clicked while still being a clearly minimal window.
-                var window = minutes <= 0
-                    ? TimeSpan.FromSeconds(30)
-                    : TimeSpan.FromMinutes(minutes);
+                // ±0 means 'logs at exactly this timestamp' — same millisecond
+                // as the pivot. CloudWatch's FilterLogEvents API requires
+                // start < end, not start <= end, so we widen by 1ms only.
+                // Result: only events whose @timestamp == pivot are returned.
+                if (minutes <= 0)
+                {
+                    var pivot = req.Around!.Value;
+                    var allLogs0 = new List<LogRecord>();
+                    foreach (var svc in req.Services!)
+                    {
+                        var logs = await cwClient.SearchAsync(
+                            svc, req.Environment ?? "dev", "",
+                            pivot, pivot.AddMilliseconds(1),
+                            limit: req.Limit ?? 500, ct);
+                        allLogs0.AddRange(logs);
+                    }
+                    allLogs0.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+                    return Results.Ok(new
+                    {
+                        logs = allLogs0,
+                        window = new { start = pivot, end = pivot.AddMilliseconds(1) },
+                    });
+                }
+                var window = TimeSpan.FromMinutes(minutes);
                 var allLogs = new List<LogRecord>();
 
                 foreach (var svc in req.Services!)
