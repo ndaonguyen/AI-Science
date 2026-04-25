@@ -137,14 +137,27 @@ public sealed class CloudWatchLogClient : IDisposable
         var key = $"{region}:{profile}";
         return _clients.GetOrAdd(key, _ =>
         {
+            Console.Error.WriteLine(
+                $"[v2/cw] GetClient: building new client region={region} profile={profile}");
             var endpoint = RegionEndpoint.GetBySystemName(region);
             var credentials = LoadCredentialsViaCli(profile);
+            if (credentials is null)
+            {
+                // Fall back to SDK's default chain — but for a desktop run
+                // this almost certainly means the request will fail. V1's
+                // working behaviour proves the CLI shell-out can succeed,
+                // so a null result here points at a real bug (PATH, CLI
+                // version, expired SSO). Surface this prominently.
+                Console.Error.WriteLine(
+                    $"[v2/cw] WARNING: credential load returned null for profile '{profile}'. " +
+                    "Falling back to SDK default chain — this will likely fail with 'Unable to " +
+                    "get IAM security credentials from EC2 Instance Metadata Service' once the " +
+                    "actual AWS call runs. Check the [v2/cw] message above for the cause.");
+                return new AmazonCloudWatchLogsClient(endpoint);
+            }
             Console.Error.WriteLine(
-                $"[CloudWatchLogClient] env='{environment}' → profile='{profile}' → " +
-                $"{credentials?.GetType().Name ?? "null (CLI failed; default chain)"}");
-            return credentials is not null
-                ? new AmazonCloudWatchLogsClient(credentials, endpoint)
-                : new AmazonCloudWatchLogsClient(endpoint);
+                $"[v2/cw] credentials loaded: {credentials.GetType().Name}");
+            return new AmazonCloudWatchLogsClient(credentials, endpoint);
         });
     }
 
