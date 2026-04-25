@@ -289,7 +289,7 @@ function renderTable() {
       `<td class="col-pick">${state.selected.has(key) ? '●' : '○'}</td>` +
       `<td class="col-ts mono">${formatTs(log.timestamp)}</td>` +
       `<td class="col-svc mono">${escapeHtml(log.service)}</td>` +
-      `<td class="col-msg mono">${escapeHtml(truncate(log.message, 240))}</td>`;
+      `<td class="col-msg mono">${escapeHtml(truncate(extractDisplayMessage(log.message), 480))}</td>`;
     tr.addEventListener('click', () => toggleSelected(key));
     frag.appendChild(tr);
   }
@@ -347,6 +347,27 @@ function formatTs(iso) {
 function truncate(s, n) {
   if (!s) return '';
   return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+/// EP services wrap every log line in a JSON envelope like:
+///   {"container_id":"…","log":"  Unexpected Execution Error at /…",
+///    "container_name":"authoring-service","ecs_cluster":"core", …}
+/// Showing the whole envelope makes the table unreadable — the actual
+/// log message is buried after a wall of metadata. Try to extract the
+/// inner `log` field; on any parse failure, fall back to the raw message
+/// so we never silently lose information.
+function extractDisplayMessage(raw) {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  if (trimmed[0] !== '{') return raw;
+  try {
+    const obj = JSON.parse(trimmed);
+    if (typeof obj?.log === 'string' && obj.log.length > 0) return obj.log.trim();
+    if (typeof obj?.message === 'string' && obj.message.length > 0) return obj.message.trim();
+    return raw;
+  } catch {
+    return raw;
+  }
 }
 function escapeHtml(s) {
   return String(s ?? '')
