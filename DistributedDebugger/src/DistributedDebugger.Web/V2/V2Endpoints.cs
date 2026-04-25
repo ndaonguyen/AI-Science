@@ -81,7 +81,14 @@ public static class V2Endpoints
                 if (error is not null) return Results.BadRequest(new { error });
 
                 var pivot = req.Around!.Value;
-                var window = TimeSpan.FromMinutes(req.WindowMinutes ?? 1);
+                var minutes = req.WindowMinutes ?? 1;
+                // ±0 is a valid user choice ("just this second") but CloudWatch
+                // rejects start==end. Floor to 30 seconds either side, which
+                // catches anything stamped within the same second the user
+                // clicked while still being a clearly minimal window.
+                var window = minutes <= 0
+                    ? TimeSpan.FromSeconds(30)
+                    : TimeSpan.FromMinutes(minutes);
                 var allLogs = new List<LogRecord>();
 
                 foreach (var svc in req.Services!)

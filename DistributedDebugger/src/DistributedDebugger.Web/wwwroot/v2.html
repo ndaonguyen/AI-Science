@@ -8,7 +8,7 @@
        the URL distinct from the cached version regardless of HTTP cache
        headers. Saves having to fight browser DevTools. -->
   <link rel="stylesheet" href="styles.css?v=2">
-  <link rel="stylesheet" href="v2.css?v=4">
+  <link rel="stylesheet" href="v2.css?v=5">
 </head>
 <body>
   <header class="topbar">
@@ -52,7 +52,7 @@
         <label>Time range
           <div class="time-row">
             <input id="startTime" type="datetime-local" step="1">
-            <span>→</span>
+            <span class="arrow">↓</span>
             <input id="endTime" type="datetime-local" step="1">
           </div>
           <div class="quick-ranges">
@@ -69,17 +69,22 @@
         <h2>Selected (0)</h2>
         <p class="hint">Click rows in the table to mark them as selected. Then either
           extend around their timestamp, or analyze them.</p>
-        <div class="action-row">
-          <label>Extend window
-            <select id="extendWindow">
-              <option value="1">±1 min</option>
-              <option value="5" selected>±5 min</option>
-              <option value="15">±15 min</option>
-              <option value="60">±1 hour</option>
-            </select>
-          </label>
-          <button id="extendBtn" class="secondary" disabled>Extend</button>
-        </div>
+        <label>Extend window (± minutes)
+          <!-- Preset chips for the common values + a custom input that
+               wins when filled in. Same pattern as the time-range chips
+               at the top of the form so the UX is consistent. -->
+          <div class="extend-presets">
+            <button type="button" data-mins="0"  class="chip">±0</button>
+            <button type="button" data-mins="1"  class="chip active">±1</button>
+            <button type="button" data-mins="2"  class="chip">±2</button>
+            <button type="button" data-mins="5"  class="chip">±5</button>
+            <button type="button" data-mins="10" class="chip">±10</button>
+          </div>
+          <input id="extendCustom" type="number" min="0" step="1"
+                 placeholder="…or custom (minutes)"
+                 class="extend-custom">
+        </label>
+        <button id="extendBtn" class="secondary" disabled>Extend</button>
         <button id="analyzeBtn" class="primary" disabled>Analyze gathered logs</button>
         <button id="clearBtn" class="secondary small">Clear all logs</button>
       </section>
@@ -101,9 +106,9 @@
                  case any future CSS change overrides them. Sums to 100%. -->
             <colgroup>
               <col style="width: 4%">
-              <col style="width: 16%">
+              <col style="width: 22%">
               <col style="width: 14%">
-              <col style="width: 66%">
+              <col style="width: 60%">
             </colgroup>
             <thead>
               <tr>
@@ -130,6 +135,6 @@
     </section>
   </main>
 
-  <script src="v2.js?v=4"></script>
+  <script src="v2.js?v=5"></script>
 </body>
 </html>

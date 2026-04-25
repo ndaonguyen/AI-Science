@@ -87,8 +87,21 @@ body {
 }
 .checkbox-item input { width: auto !important; }
 
-.time-row { display: flex; gap: 6px; align-items: center; }
-.time-row input { flex: 1; }
+/* Time picker inputs stack vertically so a wide datetime-local widget
+   never gets pushed outside the card. The arrow becomes a small label
+   between them. Looks tidier and works on any sidebar width. */
+.time-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.time-row input { width: 100%; }
+.time-row .arrow {
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  margin: 0;
+}
 .quick-ranges { display: flex; gap: 4px; margin-top: 4px; }
 .chip {
   font-size: 11px;
@@ -100,6 +113,25 @@ body {
   cursor: pointer;
 }
 .chip:hover { background: var(--bg); }
+/* The currently-chosen extend window chip. We only set this state on the
+   extend chips (not the time-range chips, where every click sets a fresh
+   value and there's no persistent 'active' selection to convey). */
+.chip.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+.extend-presets {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  margin-bottom: 6px;
+}
+.extend-custom {
+  width: 100%;
+  font-size: 12px;
+}
 
 .action-row {
   display: flex;
@@ -177,12 +209,15 @@ button.small { width: auto; font-size: 11px; padding: 4px 10px; }
   user-select: none;
 }
 .log-table .col-ts {
-  width: 18%;
+  width: 22%;
   color: #475569;
   white-space: nowrap;
+  /* Padding-right gives a comfortable gap before the SERVICE column —
+     stops the timestamp text running into the service name. */
+  padding-right: 16px;
 }
 .log-table .col-svc {
-  width: 18%;
+  width: 14%;
   color: #b45309;
   white-space: nowrap;
   font-weight: 600;
@@ -190,7 +225,7 @@ button.small { width: auto; font-size: 11px; padding: 4px 10px; }
   text-overflow: ellipsis;
 }
 .log-table .col-msg {
-  width: 66%;
+  width: 60%;
   /* pre-wrap so newlines in JSON-ish messages stay; overflow-wrap:anywhere
      lets long unbroken tokens (URLs, hashes) break inside the column
      rather than forcing the column wider. */
