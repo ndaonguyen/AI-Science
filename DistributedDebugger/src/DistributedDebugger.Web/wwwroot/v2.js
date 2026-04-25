@@ -248,8 +248,23 @@ async function onAnalyze() {
   if (!description) { setStatus('Add a bug description first.', 'error'); return; }
   if (state.logs.size === 0) { setStatus('Fetch some logs first.', 'error'); return; }
 
+  // If the user selected rows, analyse only those — that's the whole point
+  // of selection in this flow. Otherwise fall back to the full set so a
+  // quick "analyse everything I gathered" still works without clicking
+  // through every row first. Sorted by timestamp so the LLM sees the same
+  // chronological order the user does.
+  const logsToAnalyze = state.selected.size > 0
+    ? Array.from(state.selected)
+        .map(key => state.logs.get(key))
+        .filter(Boolean)
+        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+    : Array.from(state.logs.values());
+
   $analyzeBtn.disabled = true;
-  setStatus('Analyzing…', 'info');
+  const scope = state.selected.size > 0
+    ? `${logsToAnalyze.length} selected log${logsToAnalyze.length === 1 ? '' : 's'}`
+    : `all ${logsToAnalyze.length} log${logsToAnalyze.length === 1 ? '' : 's'}`;
+  setStatus(`Analyzing ${scope}…`, 'info');
   $analysisCard.classList.remove('hidden');
   $analysisBody.innerHTML = '<p class="hint">Thinking…</p>';
 
@@ -260,16 +275,14 @@ async function onAnalyze() {
       body: JSON.stringify({
         description,
         ticketId: $('ticketId').value || null,
-        // Send all gathered logs. Server-side truncation per-line guards
-        // against any single fat log line; the prompt shape itself is
-        // bounded to ~20K tokens at typical sizes.
-        logs: Array.from(state.logs.values()),
+        logs: logsToAnalyze,
       }),
     });
     const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     renderAnalysis(data);
-    $analysisCost.textContent = `tokens: ${data.inputTokens} in / ${data.outputTokens} out`;
+    $analysisCost.textContent =
+      `${scope} · tokens: ${data.inputTokens} in / ${data.outputTokens} out`;
     setStatus('Analysis complete.', 'success');
   } catch (err) {
     setStatus(`Analyze failed: ${err.message}`, 'error');
@@ -349,6 +362,19 @@ function toggleSelected(key) {
 function updateActionState() {
   $extendBtn.disabled = state.selected.size === 0;
   $analyzeBtn.disabled = state.logs.size === 0;
+
+  // Make it obvious what Analyze will operate on. If nothing is selected,
+  // the button reads 'Analyze all (N)'; once the user picks rows it
+  // narrows to 'Analyze N selected'. No more ambiguity about whether the
+  // model gets every log or just the chosen ones.
+  if (state.logs.size === 0) {
+    $analyzeBtn.textContent = 'Analyze gathered logs';
+  } else if (state.selected.size > 0) {
+    $analyzeBtn.textContent =
+      `Analyze ${state.selected.size} selected log${state.selected.size === 1 ? '' : 's'}`;
+  } else {
+    $analyzeBtn.textContent = `Analyze all ${state.logs.size} log${state.logs.size === 1 ? '' : 's'}`;
+  }
 }
 
 // ---- analysis render ----
