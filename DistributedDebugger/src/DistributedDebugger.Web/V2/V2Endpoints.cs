@@ -88,7 +88,6 @@ public static class V2Endpoints
                 // Result: only events whose @timestamp == pivot are returned.
                 if (minutes <= 0)
                 {
-                    var pivot = req.Around!.Value;
                     var allLogs0 = new List<LogRecord>();
                     foreach (var svc in req.Services!)
                     {
