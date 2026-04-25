@@ -75,10 +75,20 @@ public sealed class CloudWatchLogClient : IDisposable
             request.FilterPattern = filterPattern;
         }
 
+        // Trace request shape so the Rider console shows exactly what we
+        // asked AWS for. Useful when the result is empty and you need to
+        // confirm the filter / time / log group actually went through.
+        Console.Error.WriteLine(
+            $"[v2/cw] search → logGroup={logGroup} " +
+            $"window={start:yyyy-MM-dd HH:mm:ss.fff}Z → {end:yyyy-MM-dd HH:mm:ss.fff}Z " +
+            $"filter='{filterPattern}' limit={limit}");
+
         var results = new List<LogRecord>();
+        var pageCount = 0;
         do
         {
             var response = await client.FilterLogEventsAsync(request, ct);
+            pageCount++;
             foreach (var ev in response.Events)
             {
                 results.Add(new LogRecord(
@@ -87,10 +97,18 @@ public sealed class CloudWatchLogClient : IDisposable
                     Timestamp: DateTimeOffset.FromUnixTimeMilliseconds(ev.Timestamp),
                     Message: ev.Message ?? "",
                     EventId: ev.EventId));
-                if (results.Count >= limit) return results;
+                if (results.Count >= limit)
+                {
+                    Console.Error.WriteLine(
+                        $"[v2/cw] hit limit={limit} after {pageCount} page(s); aborting pagination");
+                    return results;
+                }
             }
             request.NextToken = response.NextToken;
         } while (!string.IsNullOrEmpty(request.NextToken));
+
+        Console.Error.WriteLine(
+            $"[v2/cw] done → {results.Count} events across {pageCount} page(s)");
 
         return results;
     }
@@ -119,14 +137,27 @@ public sealed class CloudWatchLogClient : IDisposable
         var key = $"{region}:{profile}";
         return _clients.GetOrAdd(key, _ =>
         {
+            Console.Error.WriteLine(
+                $"[v2/cw] GetClient: building new client region={region} profile={profile}");
             var endpoint = RegionEndpoint.GetBySystemName(region);
             var credentials = LoadCredentialsViaCli(profile);
+            if (credentials is null)
+            {
+                // Fall back to SDK's default chain — but for a desktop run
+                // this almost certainly means the request will fail. V1's
+                // working behaviour proves the CLI shell-out can succeed,
+                // so a null result here points at a real bug (PATH, CLI
+                // version, expired SSO). Surface this prominently.
+                Console.Error.WriteLine(
+                    $"[v2/cw] WARNING: credential load returned null for profile '{profile}'. " +
+                    "Falling back to SDK default chain — this will likely fail with 'Unable to " +
+                    "get IAM security credentials from EC2 Instance Metadata Service' once the " +
+                    "actual AWS call runs. Check the [v2/cw] message above for the cause.");
+                return new AmazonCloudWatchLogsClient(endpoint);
+            }
             Console.Error.WriteLine(
-                $"[CloudWatchLogClient] env='{environment}' → profile='{profile}' → " +
-                $"{credentials?.GetType().Name ?? "null (CLI failed; default chain)"}");
-            return credentials is not null
-                ? new AmazonCloudWatchLogsClient(credentials, endpoint)
-                : new AmazonCloudWatchLogsClient(endpoint);
+                $"[v2/cw] credentials loaded: {credentials.GetType().Name}");
+            return new AmazonCloudWatchLogsClient(credentials, endpoint);
         });
     }
 
@@ -150,25 +181,57 @@ public sealed class CloudWatchLogClient : IDisposable
     /// Shells out to `aws configure export-credentials --profile X` to
     /// resolve credentials. Mirrors what the V1 tool does; SSO sessions
     /// stored under ~/.aws/sso/cache work without any extra setup.
+    ///
+    /// On failure, logs loudly to stderr — silent fallback was hiding the
+    /// real error and letting the SDK fall through to the EC2 metadata
+    /// service, which produced a baffling 'Unable to get IAM security
+    /// credentials from EC2 Instance Metadata Service' on the user's
+    /// laptop. Better to surface the actual aws CLI error message.
     /// </summary>
     private static SessionAWSCredentials? LoadCredentialsViaCli(string profileName)
     {
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo
+            // Use the default JSON output — '--format process-credentials'
+            // doesn't exist in older AWS CLI builds and would silently fail.
+            var psi = new System.Diagnostics.ProcessStartInfo("aws",
+                $"configure export-credentials --profile {profileName}")
             {
-                FileName = "aws",
-                Arguments = $"configure export-credentials --profile {profileName} --format process-credentials",
                 RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
+                RedirectStandardError  = true,
+                UseShellExecute        = false,
+                CreateNoWindow         = true,
             };
             using var proc = System.Diagnostics.Process.Start(psi);
-            if (proc is null) return null;
+            if (proc is null)
+            {
+                Console.Error.WriteLine(
+                    "[v2/cw] could not start 'aws' — is the AWS CLI installed and on PATH? " +
+                    "If running Rider via a Windows shortcut, the spawned process inherits " +
+                    "the SYSTEM PATH, not your shell's. Restart Rider from a terminal where " +
+                    "`aws --version` works, or add aws to the system PATH.");
+                return null;
+            }
+
             var stdout = proc.StandardOutput.ReadToEnd();
+            var stderr = proc.StandardError.ReadToEnd();
             proc.WaitForExit(5000);
-            if (proc.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout)) return null;
+
+            if (proc.ExitCode != 0)
+            {
+                Console.Error.WriteLine(
+                    $"[v2/cw] aws CLI exited {proc.ExitCode} for profile '{profileName}': " +
+                    $"{stderr.Trim()}\n" +
+                    $"Run:  aws sso login --profile {profileName}");
+                return null;
+            }
+            if (string.IsNullOrWhiteSpace(stdout))
+            {
+                Console.Error.WriteLine(
+                    $"[v2/cw] aws CLI returned empty stdout for profile '{profileName}'");
+                return null;
+            }
+
             using var doc = System.Text.Json.JsonDocument.Parse(stdout);
             var root = doc.RootElement;
             return new SessionAWSCredentials(
@@ -176,8 +239,12 @@ public sealed class CloudWatchLogClient : IDisposable
                 root.GetProperty("SecretAccessKey").GetString(),
                 root.GetProperty("SessionToken").GetString());
         }
-        catch
+        catch (Exception ex)
         {
+            // Catch-all so a malformed config doesn't crash the whole request,
+            // but log the type and message so the cause is visible.
+            Console.Error.WriteLine(
+                $"[v2/cw] credential load threw {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
