@@ -38,7 +38,7 @@ const $filterText     = $('filterText');
 const $startTime      = $('startTime');
 const $endTime        = $('endTime');
 const $filterBtn      = $('filterBtn');
-const $extendWindow   = $('extendWindow');
+const $extendCustom   = $('extendCustom');
 const $extendBtn      = $('extendBtn');
 const $analyzeBtn     = $('analyzeBtn');
 const $clearBtn       = $('clearBtn');
@@ -69,6 +69,22 @@ const $analysisCost   = $('analysisCost');
 
   document.querySelectorAll('.quick-ranges .chip').forEach(b =>
     b.addEventListener('click', () => setRangeFromPreset(b.dataset.range)));
+
+  // Extend-window chips: clicking a chip clears the custom input and
+  // marks the chip as active. Typing in the custom input clears any
+  // active chip. resolveExtendMinutes() picks whichever the user used
+  // most recently. Default state: ±1 active, custom empty.
+  document.querySelectorAll('.extend-presets .chip').forEach(b =>
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.extend-presets .chip').forEach(c => c.classList.remove('active'));
+      b.classList.add('active');
+      $extendCustom.value = '';
+    }));
+  $extendCustom.addEventListener('input', () => {
+    if ($extendCustom.value !== '') {
+      document.querySelectorAll('.extend-presets .chip').forEach(c => c.classList.remove('active'));
+    }
+  });
 
   $filterBtn.addEventListener('click', onFilter);
   $extendBtn.addEventListener('click', onExtend);
@@ -103,6 +119,24 @@ function fromLocalInput(v) {
 }
 function selectedServices() {
   return Array.from(document.querySelectorAll('input[name=service]:checked')).map(c => c.value);
+}
+
+/// Pick the active extend-window value: custom input wins when it's a
+/// non-negative number; otherwise the active preset chip's data-mins.
+/// Falls back to ±1 if somehow nothing is set, so Extend can never send
+/// NaN to the server.
+function resolveExtendMinutes() {
+  const customRaw = $extendCustom.value.trim();
+  if (customRaw !== '') {
+    const n = Number(customRaw);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  const active = document.querySelector('.extend-presets .chip.active');
+  if (active?.dataset.mins !== undefined) {
+    const n = Number(active.dataset.mins);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  return 1;
 }
 function setStatus(text, kind) {
   if (!text) { $status.classList.add('hidden'); return; }
@@ -177,7 +211,7 @@ async function onExtend() {
   setStatus('Extending around selected rows…', 'info');
 
   const services = selectedServices();
-  const windowMinutes = parseInt($extendWindow.value, 10);
+  const windowMinutes = resolveExtendMinutes();
   let added = 0;
   try {
     // One extend call per selected row. Fast in practice; CloudWatch
