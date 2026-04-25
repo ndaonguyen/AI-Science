@@ -3,8 +3,12 @@
 <head>
   <meta charset="utf-8">
   <title>Log Investigator (V2)</title>
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="v2.css">
+  <!-- ?v= cache-busters: bump these when you push CSS/JS changes if your
+       browser is being stubborn about reloading. The query string makes
+       the URL distinct from the cached version regardless of HTTP cache
+       headers. Saves having to fight browser DevTools. -->
+  <link rel="stylesheet" href="styles.css?v=2">
+  <link rel="stylesheet" href="v2.css?v=4">
 </head>
 <body>
   <header class="topbar">
@@ -92,6 +96,15 @@
         </div>
         <div class="logs-scroll">
           <table id="logTable" class="log-table">
+            <!-- colgroup is the most authoritative way to set column widths
+                 in HTML. Belt-and-braces with the CSS percentage rules in
+                 case any future CSS change overrides them. Sums to 100%. -->
+            <colgroup>
+              <col style="width: 4%">
+              <col style="width: 16%">
+              <col style="width: 14%">
+              <col style="width: 66%">
+            </colgroup>
             <thead>
               <tr>
                 <th class="col-pick"></th>
@@ -117,6 +130,6 @@
     </section>
   </main>
 
-  <script src="v2.js"></script>
+  <script src="v2.js?v=4"></script>
 </body>
 </html>
