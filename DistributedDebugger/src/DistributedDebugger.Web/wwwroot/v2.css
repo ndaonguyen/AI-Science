@@ -190,7 +190,7 @@ button.small { width: auto; font-size: 11px; padding: 4px 10px; }
   text-overflow: ellipsis;
 }
 .log-table .col-msg {
-  width: 60%;
+  width: 66%;
   /* pre-wrap so newlines in JSON-ish messages stay; overflow-wrap:anywhere
      lets long unbroken tokens (URLs, hashes) break inside the column
      rather than forcing the column wider. */
@@ -198,7 +198,7 @@ button.small { width: auto; font-size: 11px; padding: 4px 10px; }
   overflow-wrap: anywhere;
   font-size: 13px;
   line-height: 1.5;
-  color: #0f172a;
+  color: #000000;
   font-weight: 500;
 }
 
