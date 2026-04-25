@@ -121,17 +121,16 @@ body {
   color: #ffffff;
   border-color: #2563eb;
 }
-/* Header row of the Selected card: heading on the left, optional
-   'Clear selection' link on the right. The link auto-hides when there's
-   nothing to clear so the header doesn't flicker between 'Selected (0)
-   Clear selection' (nonsensical) and 'Selected (3) Clear selection'. */
-.selected-header {
+/* Title row inside the Logs card header: 'Logs (N)' next to an optional
+   'Clear selection' link. The link auto-hides when nothing is selected.
+   This row sits on the left of the .card-header flex; #enforcedFilter
+   (the 'filterPattern: ...' chip) stays on the right, where it was. */
+.logs-title-row {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 16px;
 }
-.selected-header h2 { margin: 0; }
+.logs-title-row h2 { margin: 0; }
 
 .hint-link {
   font-size: 11px;
