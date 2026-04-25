@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Log Investigator (V2)</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="v2.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Log Investigator <span class="version-tag">V2</span></h1>
+    <div class="topbar-right">
+      <a href="/index.html" class="topbar-link">→ V1 (agent)</a>
+    </div>
+  </header>
+
+  <main class="v2-layout">
+    <!-- Left: form to filter / extend -->
+    <aside class="v2-side">
+      <section class="card">
+        <h2>Bug context</h2>
+        <label>Ticket ID (optional)
+          <input id="ticketId" type="text" placeholder="COCO-1234">
+        </label>
+        <label>Bug description
+          <textarea id="description" rows="4" placeholder="What's the user-visible problem?"></textarea>
+        </label>
+      </section>
+
+      <section class="card">
+        <h2>Filter logs</h2>
+        <label>Services
+          <div id="services" class="checkbox-group">
+            <!-- populated at load -->
+          </div>
+        </label>
+        <label>Environment
+          <select id="environment">
+            <option value="dev">dev</option>
+            <option value="staging">staging</option>
+            <option value="live" selected>live</option>
+            <option value="live-ca">live-ca</option>
+          </select>
+        </label>
+        <label>Filter text (CloudWatch)
+          <input id="filterText" type="text" placeholder="e.g. Unexpected Execution Error">
+        </label>
+        <label>Time range
+          <div class="time-row">
+            <input id="startTime" type="datetime-local" step="1">
+            <span>→</span>
+            <input id="endTime" type="datetime-local" step="1">
+          </div>
+          <div class="quick-ranges">
+            <button type="button" data-range="15m" class="chip">15m</button>
+            <button type="button" data-range="1h"  class="chip">1h</button>
+            <button type="button" data-range="6h"  class="chip">6h</button>
+            <button type="button" data-range="24h" class="chip">24h</button>
+          </div>
+        </label>
+        <button id="filterBtn" class="primary">Filter</button>
+      </section>
+
+      <section class="card">
+        <h2>Selected (0)</h2>
+        <p class="hint">Click rows in the table to mark them as selected. Then either
+          extend around their timestamp, or analyze them.</p>
+        <div class="action-row">
+          <label>Extend window
+            <select id="extendWindow">
+              <option value="1">±1 min</option>
+              <option value="5" selected>±5 min</option>
+              <option value="15">±15 min</option>
+              <option value="60">±1 hour</option>
+            </select>
+          </label>
+          <button id="extendBtn" class="secondary" disabled>Extend</button>
+        </div>
+        <button id="analyzeBtn" class="primary" disabled>Analyze gathered logs</button>
+        <button id="clearBtn" class="secondary small">Clear all logs</button>
+      </section>
+    </aside>
+
+    <!-- Right: log table + analysis output -->
+    <section class="v2-main">
+      <div id="status" class="status hidden"></div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Logs (<span id="logCount">0</span>)</h2>
+          <span id="enforcedFilter" class="hint mono"></span>
+        </div>
+        <div class="logs-scroll">
+          <table id="logTable" class="log-table">
+            <thead>
+              <tr>
+                <th class="col-pick"></th>
+                <th class="col-ts">Timestamp (UTC)</th>
+                <th class="col-svc">Service</th>
+                <th class="col-msg">Message</th>
+              </tr>
+            </thead>
+            <tbody id="logTbody">
+              <tr class="empty"><td colspan="4">No logs yet — filter to begin.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="analysisCard" class="card hidden">
+        <div class="card-header">
+          <h2>Analysis</h2>
+          <span id="analysisCost" class="hint mono"></span>
+        </div>
+        <div id="analysisBody"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="v2.js"></script>
+</body>
+</html>

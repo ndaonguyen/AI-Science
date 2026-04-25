@@ -1,0 +1,160 @@
+/* V2 layout — minimal additions on top of styles.css. */
+
+.version-tag {
+  font-size: 11px;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.topbar-right { display: flex; gap: 12px; align-items: center; }
+.topbar-link {
+  font-size: 12px;
+  color: #6c7086;
+  text-decoration: none;
+}
+.topbar-link:hover { color: var(--fg); }
+
+.v2-layout {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 16px;
+  padding: 16px;
+}
+@media (max-width: 900px) {
+  .v2-layout { grid-template-columns: 1fr; }
+}
+
+.v2-side { display: flex; flex-direction: column; gap: 12px; }
+.v2-main  { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+.card h2 { margin: 0 0 10px; font-size: 14px; color: var(--muted); }
+.card-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.card-header h2 { margin: 0; }
+
+.card label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.card label > input,
+.card label > textarea,
+.card label > select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+.checkbox-item {
+  display: flex !important;
+  align-items: center;
+  gap: 4px;
+  margin: 0 !important;
+  cursor: pointer;
+}
+.checkbox-item input { width: auto !important; }
+
+.time-row { display: flex; gap: 6px; align-items: center; }
+.time-row input { flex: 1; }
+.quick-ranges { display: flex; gap: 4px; margin-top: 4px; }
+.chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.chip:hover { background: var(--bg); }
+
+.action-row {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 8px;
+}
+.action-row label { flex: 1; margin: 0; }
+
+button.primary, button.secondary { width: 100%; margin-bottom: 6px; }
+button.small { width: auto; font-size: 11px; padding: 4px 10px; }
+
+.status {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.status.info    { background: #1e293b; color: #93c5fd; }
+.status.success { background: #14532d33; color: #86efac; border: 1px solid #16a34a55; }
+.status.error   { background: #7f1d1d33; color: #fca5a5; border: 1px solid #ef444455; }
+
+/* Log table — distinct from V1's styling so the difference is obvious */
+.logs-scroll {
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.log-table thead th {
+  position: sticky;
+  top: 0;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  text-align: left;
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  border-bottom: 1px solid var(--border);
+}
+.log-table tbody tr {
+  cursor: pointer;
+  border-bottom: 1px solid #2a2a3e;
+}
+.log-table tbody tr:hover { background: #1a1a26; }
+.log-table tbody tr.selected { background: #1e293b; }
+.log-table tbody tr.selected:hover { background: #243047; }
+.log-table tbody tr.empty { cursor: default; color: var(--muted); }
+.log-table tbody tr.empty:hover { background: transparent; }
+.log-table td {
+  padding: 4px 10px;
+  vertical-align: top;
+  white-space: nowrap;
+}
+.log-table .col-pick { width: 24px; text-align: center; color: #89b4fa; }
+.log-table .col-ts   { width: 200px; color: #94a3b8; }
+.log-table .col-svc  { width: 200px; color: #fbbf24; }
+.log-table .col-msg  {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  color: #e5e9f0;
+}
+
+.suspicious li { margin-bottom: 6px; font-size: 12px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.hidden { display: none; }
