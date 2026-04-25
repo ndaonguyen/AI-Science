@@ -90,6 +90,15 @@ const $analysisCost   = $('analysisCost');
   $extendBtn.addEventListener('click', onExtend);
   $analyzeBtn.addEventListener('click', onAnalyze);
   $clearBtn.addEventListener('click', onClear);
+
+  // 'Clear selection' link in the Selected-card header. Only deselects
+  // rows; the gathered log set is unaffected. Keeps the user in flow when
+  // they want to start a fresh extension pivot without losing the logs
+  // they've already gathered.
+  document.getElementById('clearSelectionLink').addEventListener('click', e => {
+    e.preventDefault();
+    onClearSelection();
+  });
 })();
 
 // ---- helpers ----
@@ -285,8 +294,29 @@ function onClear() {
   state.logs.clear();
   state.selected.clear();
   renderTable();
+  refreshSelectedHeader();
   $analysisCard.classList.add('hidden');
   setStatus('Cleared.', 'info');
+}
+
+function onClearSelection() {
+  if (state.selected.size === 0) return;
+  // Remove the visual selected state from every row without re-rendering
+  // the whole table. `Set.clear` first so toggleSelected-style targeted
+  // updates can read state.selected as already-empty.
+  const previouslySelected = Array.from(state.selected);
+  state.selected.clear();
+  for (const key of previouslySelected) {
+    const tr = $logTbody.querySelector(`tr[data-key="${cssEscape(key)}"]`);
+    if (tr) {
+      tr.classList.remove('selected');
+      const pick = tr.querySelector('.col-pick');
+      if (pick) pick.textContent = '○';
+    }
+  }
+  refreshSelectedHeader();
+  updateActionState();
+  setStatus('Selection cleared.', 'info');
 }
 
 // ---- log table ----
@@ -343,9 +373,19 @@ function toggleSelected(key) {
     tr.classList.toggle('selected', state.selected.has(key));
     tr.querySelector('.col-pick').textContent = state.selected.has(key) ? '●' : '○';
   }
-  document.querySelector('.v2-side .card:nth-child(3) h2').textContent =
-    `Selected (${state.selected.size})`;
+  refreshSelectedHeader();
   updateActionState();
+}
+
+/// Update the 'Selected (N)' heading and toggle the Clear-selection link
+/// visibility based on the current selected set. Centralised because three
+/// different code paths (toggle, clear-selection, clear-all) need to keep
+/// these in sync, and a stale heading was easy to introduce.
+function refreshSelectedHeader() {
+  const heading = document.getElementById('selectedHeading');
+  if (heading) heading.textContent = `Selected (${state.selected.size})`;
+  const link = document.getElementById('clearSelectionLink');
+  if (link) link.classList.toggle('hidden', state.selected.size === 0);
 }
 
 function updateActionState() {
