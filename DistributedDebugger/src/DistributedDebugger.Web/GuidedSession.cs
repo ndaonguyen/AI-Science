@@ -63,6 +63,17 @@ public sealed class GuidedSession : IDisposable
     // handler's finally block so a future turn is unconstrained.
     public (string Start, string End)? TurnTimeWindowOverride { get; set; }
 
+    // Per-turn filterPattern override. When non-null, any search_logs tool
+    // call has its filterPattern stomped with this value. Used because
+    // CloudWatch's FilterPattern syntax is fiddly (space-separated terms
+    // are AND, double-quoted strings are literal phrases) and the LLM
+    // tends to rewrite, paraphrase, or omit the user's filter text — which
+    // produces zero hits even when the user knows the phrase exists. The
+    // browser sends the raw filter the user typed; we forward it verbatim,
+    // wrapped in double-quotes if it contains spaces and isn't already
+    // quoted, so AWS treats multi-word phrases as a single literal.
+    public string? TurnFilterPatternOverride { get; set; }
+
     public GuidedSession(
         string id,
         GuidedAgent agent,
