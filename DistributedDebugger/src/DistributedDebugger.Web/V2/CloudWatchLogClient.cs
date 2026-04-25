@@ -75,10 +75,20 @@ public sealed class CloudWatchLogClient : IDisposable
             request.FilterPattern = filterPattern;
         }
 
+        // Trace request shape so the Rider console shows exactly what we
+        // asked AWS for. Useful when the result is empty and you need to
+        // confirm the filter / time / log group actually went through.
+        Console.Error.WriteLine(
+            $"[v2/cw] search → logGroup={logGroup} " +
+            $"window={start:yyyy-MM-dd HH:mm:ss.fff}Z → {end:yyyy-MM-dd HH:mm:ss.fff}Z " +
+            $"filter='{filterPattern}' limit={limit}");
+
         var results = new List<LogRecord>();
+        var pageCount = 0;
         do
         {
             var response = await client.FilterLogEventsAsync(request, ct);
+            pageCount++;
             foreach (var ev in response.Events)
             {
                 results.Add(new LogRecord(
@@ -87,10 +97,18 @@ public sealed class CloudWatchLogClient : IDisposable
                     Timestamp: DateTimeOffset.FromUnixTimeMilliseconds(ev.Timestamp),
                     Message: ev.Message ?? "",
                     EventId: ev.EventId));
-                if (results.Count >= limit) return results;
+                if (results.Count >= limit)
+                {
+                    Console.Error.WriteLine(
+                        $"[v2/cw] hit limit={limit} after {pageCount} page(s); aborting pagination");
+                    return results;
+                }
             }
             request.NextToken = response.NextToken;
         } while (!string.IsNullOrEmpty(request.NextToken));
+
+        Console.Error.WriteLine(
+            $"[v2/cw] done → {results.Count} events across {pageCount} page(s)");
 
         return results;
     }
