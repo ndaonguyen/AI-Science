@@ -99,11 +99,12 @@ button.small { width: auto; font-size: 11px; padding: 4px 10px; }
 .status {
   padding: 8px 12px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 500;
 }
-.status.info    { background: #1e293b; color: #93c5fd; }
-.status.success { background: #14532d33; color: #86efac; border: 1px solid #16a34a55; }
-.status.error   { background: #7f1d1d33; color: #fca5a5; border: 1px solid #ef444455; }
+.status.info    { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+.status.success { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.status.error   { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 
 /* Log table — distinct from V1's styling so the difference is obvious */
 .logs-scroll {
@@ -112,9 +113,14 @@ button.small { width: auto; font-size: 11px; padding: 4px 10px; }
   border: 1px solid var(--border);
   border-radius: 4px;
 }
+/* Table layout: fixed widths on the helper columns let the message column
+   take all remaining space. Without table-layout: fixed, the browser
+   auto-distributes width based on content — and a fat JSON message
+   collapsed every other column to nothing in our screenshot. */
 .log-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 12px;
 }
 .log-table thead th {
@@ -132,29 +138,57 @@ button.small { width: auto; font-size: 11px; padding: 4px 10px; }
 }
 .log-table tbody tr {
   cursor: pointer;
-  border-bottom: 1px solid #2a2a3e;
+  border-bottom: 1px solid #e2e8f0;
 }
-.log-table tbody tr:hover { background: #1a1a26; }
-.log-table tbody tr.selected { background: #1e293b; }
-.log-table tbody tr.selected:hover { background: #243047; }
+.log-table tbody tr:hover    { background: #f8fafc; }
+.log-table tbody tr.selected { background: #dbeafe; }
+.log-table tbody tr.selected:hover { background: #bfdbfe; }
 .log-table tbody tr.empty { cursor: default; color: var(--muted); }
 .log-table tbody tr.empty:hover { background: transparent; }
 .log-table td {
-  padding: 4px 10px;
+  padding: 6px 10px;
   vertical-align: top;
+}
+/* Fixed-width helper columns; col-msg fills the rest. */
+.log-table .col-pick {
+  width: 28px;
+  text-align: center;
+  color: #2563eb;
+  font-size: 14px;
+  user-select: none;
+}
+.log-table .col-ts {
+  width: 180px;
+  color: #475569;
   white-space: nowrap;
 }
-.log-table .col-pick { width: 24px; text-align: center; color: #89b4fa; }
-.log-table .col-ts   { width: 200px; color: #94a3b8; }
-.log-table .col-svc  { width: 200px; color: #fbbf24; }
-.log-table .col-msg  {
+.log-table .col-svc {
+  width: 150px;
+  color: #b45309;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.log-table .col-msg {
+  /* No width — table-layout:fixed gives this column whatever's left.
+     pre-wrap so newlines in the JSON message stay; word-break only on
+     long unbroken tokens (URLs, hashes) so the column can't be forced
+     to a 3-char width by an unspaced JSON blob. */
   white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 11px;
-  color: #e5e9f0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #1e293b;
 }
 
 .suspicious li { margin-bottom: 6px; font-size: 12px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* The 'filterPattern: "..."' label sits next to the Logs heading. Default
+   text colour washes out on the white card; give it a low-key but
+   readable mono treatment. */
+.card-header .hint.mono {
+  color: #475569;
+  font-size: 11px;
+}
 
 .hidden { display: none; }
