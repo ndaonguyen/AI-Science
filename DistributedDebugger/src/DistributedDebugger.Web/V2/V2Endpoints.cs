@@ -30,79 +30,107 @@ public static class V2Endpoints
         app.MapPost("/api/v2/logs/filter", async (
             FilterRequest req, HttpContext ctx, CancellationToken ct) =>
         {
-            var error = ValidateFilter(req);
-            if (error is not null) return Results.BadRequest(new { error });
-
-            var (start, end) = ResolveRange(req.StartTime, req.EndTime);
-            var pattern = NormaliseFilterPattern(req.FilterText ?? "");
-            var allLogs = new List<LogRecord>();
-
-            // One AWS call per service — they have independent log groups.
-            foreach (var svc in req.Services!)
+            // Wrap every endpoint in a try/catch returning a JSON error so the
+            // browser never sees an empty 500 body (which causes JSON.parse
+            // failures on the client). The framework's default 500 response
+            // is empty unless we configure a developer exception page; we
+            // prefer not to depend on that being on.
+            try
             {
-                var perServiceCt = ct;
-                var logs = await cwClient.SearchAsync(
-                    svc, req.Environment ?? "dev", pattern, start, end,
-                    limit: req.Limit ?? 500, perServiceCt);
-                allLogs.AddRange(logs);
+                var error = ValidateFilter(req);
+                if (error is not null) return Results.BadRequest(new { error });
+
+                var (start, end) = ResolveRange(req.StartTime, req.EndTime);
+                var pattern = NormaliseFilterPattern(req.FilterText ?? "");
+                var allLogs = new List<LogRecord>();
+
+                // One AWS call per service — they have independent log groups.
+                foreach (var svc in req.Services!)
+                {
+                    var logs = await cwClient.SearchAsync(
+                        svc, req.Environment ?? "dev", pattern, start, end,
+                        limit: req.Limit ?? 500, ct);
+                    allLogs.AddRange(logs);
+                }
+
+                // Server-side ordering by timestamp gives the browser a stable
+                // baseline regardless of the order CloudWatch returned events
+                // (CloudWatch's order is per-stream, not per-log-group).
+                allLogs.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+
+                return Results.Ok(new
+                {
+                    logs = allLogs,
+                    appliedFilter = pattern,
+                    window = new { start, end },
+                });
             }
-
-            // Server-side ordering by timestamp gives the browser a stable
-            // baseline regardless of the order CloudWatch returned events
-            // (CloudWatch's order is per-stream, not per-log-group).
-            allLogs.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
-
-            return Results.Ok(new
+            catch (Exception ex)
             {
-                logs = allLogs,
-                appliedFilter = pattern,
-                window = new { start, end },
-            });
+                Console.Error.WriteLine($"[v2/filter] {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+                return Results.Json(new { error = $"{ex.GetType().Name}: {ex.Message}" }, statusCode: 500);
+            }
         });
 
         app.MapPost("/api/v2/logs/extend", async (
             ExtendRequest req, HttpContext ctx, CancellationToken ct) =>
         {
-            var error = ValidateExtend(req);
-            if (error is not null) return Results.BadRequest(new { error });
-
-            var pivot = req.Around!.Value;
-            var window = TimeSpan.FromMinutes(req.WindowMinutes ?? 1);
-            var allLogs = new List<LogRecord>();
-
-            foreach (var svc in req.Services!)
+            try
             {
-                var logs = await cwClient.ExtendAsync(
-                    svc, req.Environment ?? "dev", pivot, window,
-                    limit: req.Limit ?? 500, ct);
-                allLogs.AddRange(logs);
+                var error = ValidateExtend(req);
+                if (error is not null) return Results.BadRequest(new { error });
+
+                var pivot = req.Around!.Value;
+                var window = TimeSpan.FromMinutes(req.WindowMinutes ?? 1);
+                var allLogs = new List<LogRecord>();
+
+                foreach (var svc in req.Services!)
+                {
+                    var logs = await cwClient.ExtendAsync(
+                        svc, req.Environment ?? "dev", pivot, window,
+                        limit: req.Limit ?? 500, ct);
+                    allLogs.AddRange(logs);
+                }
+                allLogs.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+
+                return Results.Ok(new
+                {
+                    logs = allLogs,
+                    window = new { start = pivot - window, end = pivot + window },
+                });
             }
-            allLogs.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
-
-            return Results.Ok(new
+            catch (Exception ex)
             {
-                logs = allLogs,
-                window = new { start = pivot - window, end = pivot + window },
-            });
+                Console.Error.WriteLine($"[v2/extend] {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+                return Results.Json(new { error = $"{ex.GetType().Name}: {ex.Message}" }, statusCode: 500);
+            }
         });
 
         app.MapPost("/api/v2/logs/analyze", async (
             AnalyzeRequest req, IConfiguration cfg, CancellationToken ct) =>
         {
-            if (req.Logs is null || req.Logs.Count == 0)
-                return Results.BadRequest(new { error = "no logs to analyse" });
-            if (string.IsNullOrWhiteSpace(req.Description))
-                return Results.BadRequest(new { error = "description is required" });
+            try
+            {
+                if (req.Logs is null || req.Logs.Count == 0)
+                    return Results.BadRequest(new { error = "no logs to analyse" });
+                if (string.IsNullOrWhiteSpace(req.Description))
+                    return Results.BadRequest(new { error = "description is required" });
 
-            var openaiKey = cfg["OPENAI_API_KEY"]
-                            ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-            if (string.IsNullOrWhiteSpace(openaiKey))
-                return Results.Problem("OPENAI_API_KEY is not configured");
+                var openaiKey = cfg["OPENAI_API_KEY"]
+                                ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+                if (string.IsNullOrWhiteSpace(openaiKey))
+                    return Results.Json(new { error = "OPENAI_API_KEY is not configured" }, statusCode: 500);
 
-            var analyzer = new LogAnalyzer(openaiKey);
-            var result = await analyzer.AnalyzeAsync(
-                req.Description, req.TicketId, req.Logs, ct);
-            return Results.Ok(result);
+                var analyzer = new LogAnalyzer(openaiKey);
+                var result = await analyzer.AnalyzeAsync(
+                    req.Description, req.TicketId, req.Logs, ct);
+                return Results.Ok(result);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[v2/analyze] {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+                return Results.Json(new { error = $"{ex.GetType().Name}: {ex.Message}" }, statusCode: 500);
+            }
         });
     }
 
