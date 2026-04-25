@@ -1,5 +1,17 @@
 /* V2 layout — minimal additions on top of styles.css. */
 
+/* styles.css (V1) constrains body to max-width: 980px and centres it.
+   That works for V1's chat-style UI but wastes ~70% of a wide monitor
+   on V2 where the log table needs all the horizontal real estate it
+   can get. Since v2.html only loads styles.css for shared components,
+   override the body here. Limit to a sensible cap (1800px) so the
+   layout doesn't sprawl awkwardly on ultrawide displays. */
+body {
+  max-width: 1800px;
+  width: 92%;
+  padding: 16px 0;
+}
+
 .version-tag {
   font-size: 11px;
   background: #1e1e2e;
