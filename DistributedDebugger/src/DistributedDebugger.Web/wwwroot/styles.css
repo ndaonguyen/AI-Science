@@ -393,16 +393,30 @@ button.small { padding: 5px 12px; font-size: 13px; }
   color: #89b4fa;
   font-weight: 600;
 }
-.raw-logs-group-close {
+.raw-logs-group-close,
+button.raw-logs-group-close,
+.raw-logs-group-close.secondary,
+button.raw-logs-group-close.secondary {
+  /* Dark-context close button — duplicating selectors raises specificity so
+     the global `button.secondary` rule (dark text on transparent) doesn't
+     win on the near-black header where it would render invisible. */
   font-size: 11px;
   padding: 2px 7px;
-  background: transparent;
-  border: 1px solid #333355;
-  color: #888;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid #44446a;
+  color: #cdd6f4;
   cursor: pointer;
   border-radius: 3px;
+  line-height: 1;
 }
-.raw-logs-group-close:hover { background: #2a2a3e; color: #cdd6f4; }
+.raw-logs-group-close:hover,
+button.raw-logs-group-close:hover,
+.raw-logs-group-close.secondary:hover,
+button.raw-logs-group-close.secondary:hover {
+  background: #2a2a3e;
+  color: #ffffff;
+  border-color: #6c7086;
+}
 .raw-logs-group-body { padding: 2px 0; }
 .raw-logs-loading, .raw-logs-empty, .raw-logs-error {
   padding: 16px;
