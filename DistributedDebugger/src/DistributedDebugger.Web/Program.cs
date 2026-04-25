@@ -29,6 +29,11 @@ app.UseStaticFiles();
 
 // ---- API endpoints ----
 
+// V2 (deterministic) flow: filter / extend / analyze. See V2/V2Endpoints.cs.
+// Lives alongside the existing V1 (agent) endpoints; the two are independent
+// and can run in parallel until V1 is retired.
+DistributedDebugger.Web.V2.V2Endpoints.MapV2Endpoints(app);
+
 // Fetch raw matching CloudWatch log lines — no AI, no session needed.
 // Used by the UI to preview log results before starting an investigation.
 app.MapPost("/api/logs/raw", async (RawLogsRequest req, CancellationToken ct) =>

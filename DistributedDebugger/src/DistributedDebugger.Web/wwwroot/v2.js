@@ -1,0 +1,345 @@
+// Log Investigator V2 — deterministic flow.
+//
+// State model: the browser owns the accumulated set of logs. Every fetch
+// (filter or extend) merges its results into that set, deduplicating by
+// EventId where present. The server never tracks state — each call is a
+// fresh request. This makes the whole flow reload-safe (refresh the page
+// and you start clean) and trivial to reason about.
+
+const state = {
+  // Map<eventId-or-fallbackKey, LogRecord> — keeps insertion order
+  logs: new Map(),
+  // Set<key> of rows the user has clicked
+  selected: new Set(),
+};
+
+// Service list mirrors the V1 ServiceLogGroupResolver.KnownServices. Keep
+// in sync if you add services there.
+const KNOWN_SERVICES = [
+  'authoring-service',
+  'content-media-service',
+  'content-search-service',
+  'ai-content-authoring',
+  'authentication',
+  'class-management',
+  'core-entities-content',
+  'core-entities-authoring',
+  'graphql-gateway-fusion',
+  'learning-pathways-backend',
+  'queues-app',
+  'web-app',
+];
+
+// ---- DOM ----
+const $ = id => document.getElementById(id);
+const $services       = $('services');
+const $environment    = $('environment');
+const $filterText     = $('filterText');
+const $startTime      = $('startTime');
+const $endTime        = $('endTime');
+const $filterBtn      = $('filterBtn');
+const $extendWindow   = $('extendWindow');
+const $extendBtn      = $('extendBtn');
+const $analyzeBtn     = $('analyzeBtn');
+const $clearBtn       = $('clearBtn');
+const $logTbody       = $('logTbody');
+const $logCount       = $('logCount');
+const $enforcedFilter = $('enforcedFilter');
+const $status         = $('status');
+const $analysisCard   = $('analysisCard');
+const $analysisBody   = $('analysisBody');
+const $analysisCost   = $('analysisCost');
+
+// ---- init ----
+(function init() {
+  // Build services checkboxes (default: authoring-service checked, like V1)
+  for (const svc of KNOWN_SERVICES) {
+    const id = `svc-${svc}`;
+    const wrap = document.createElement('label');
+    wrap.className = 'checkbox-item';
+    wrap.innerHTML =
+      `<input type="checkbox" name="service" value="${svc}" id="${id}"`
+      + (svc === 'authoring-service' ? ' checked' : '') + `>`
+      + `<span>${svc}</span>`;
+    $services.appendChild(wrap);
+  }
+
+  // Default time range = last 1 hour
+  setRangeFromPreset('1h');
+
+  document.querySelectorAll('.quick-ranges .chip').forEach(b =>
+    b.addEventListener('click', () => setRangeFromPreset(b.dataset.range)));
+
+  $filterBtn.addEventListener('click', onFilter);
+  $extendBtn.addEventListener('click', onExtend);
+  $analyzeBtn.addEventListener('click', onAnalyze);
+  $clearBtn.addEventListener('click', onClear);
+})();
+
+// ---- helpers ----
+function setRangeFromPreset(p) {
+  const now = new Date();
+  const map = { '15m': 15, '1h': 60, '6h': 360, '24h': 1440 };
+  const minutes = map[p] ?? 60;
+  const start = new Date(now.getTime() - minutes * 60_000);
+  // datetime-local needs YYYY-MM-DDTHH:MM:SS in *local* time, but we want
+  // UTC. Browsers don't expose UTC datetime-local natively, so we render
+  // local time and treat it as UTC at submit time. Document this in the
+  // UI's helper text someday — for now the field labels say "(UTC)".
+  $startTime.value = toLocalInput(start);
+  $endTime.value = toLocalInput(now);
+}
+function toLocalInput(d) {
+  const pad = n => String(n).padStart(2, '0');
+  // We treat the picker value as UTC at submit time, so emit UTC components.
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
+         `T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+}
+function fromLocalInput(v) {
+  // Treat value as UTC. Browsers parse as local; we strip and re-create.
+  // Empty value → null (server defaults to last hour).
+  if (!v) return null;
+  return v + 'Z';
+}
+function selectedServices() {
+  return Array.from(document.querySelectorAll('input[name=service]:checked')).map(c => c.value);
+}
+function setStatus(text, kind) {
+  if (!text) { $status.classList.add('hidden'); return; }
+  $status.textContent = text;
+  $status.className = `status ${kind || ''}`;
+  $status.classList.remove('hidden');
+}
+function recordKey(log) {
+  // Prefer EventId (CloudWatch's stable per-event id); fall back to a
+  // composite key for cases where it's missing (shouldn't happen with
+  // FilterLogEvents, but be defensive).
+  return log.eventId || `${log.timestamp}|${log.service}|${log.message?.slice(0, 80)}`;
+}
+
+// ---- actions ----
+async function onFilter() {
+  const services = selectedServices();
+  if (services.length === 0) { setStatus('Pick at least one service.', 'error'); return; }
+
+  $filterBtn.disabled = true;
+  setStatus('Fetching logs…', 'info');
+  try {
+    const body = {
+      services,
+      environment: $environment.value,
+      filterText: $filterText.value,
+      startTime: fromLocalInput($startTime.value),
+      endTime:   fromLocalInput($endTime.value),
+      limit: 500,
+    };
+    const res = await fetch('/api/v2/logs/filter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    mergeLogs(data.logs || []);
+    $enforcedFilter.textContent = data.appliedFilter
+      ? `filterPattern: ${data.appliedFilter}` : '(no filter)';
+    setStatus(`Fetched ${data.logs?.length ?? 0} logs.`, 'success');
+  } catch (err) {
+    setStatus(`Filter failed: ${err.message}`, 'error');
+  } finally {
+    $filterBtn.disabled = false;
+  }
+}
+
+async function onExtend() {
+  if (state.selected.size === 0) {
+    setStatus('Select at least one row first (click a row).', 'error');
+    return;
+  }
+  $extendBtn.disabled = true;
+  setStatus('Extending around selected rows…', 'info');
+
+  const services = selectedServices();
+  const windowMinutes = parseInt($extendWindow.value, 10);
+  let added = 0;
+  try {
+    // One extend call per selected row. Fast in practice; CloudWatch
+    // caps each call to a few hundred ms.
+    for (const key of state.selected) {
+      const pivot = state.logs.get(key);
+      if (!pivot) continue;
+      const res = await fetch('/api/v2/logs/extend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          services,
+          environment: $environment.value,
+          around: pivot.timestamp,
+          windowMinutes,
+          limit: 500,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      added += mergeLogs(data.logs || []);
+    }
+    setStatus(`Added ${added} new logs.`, 'success');
+  } catch (err) {
+    setStatus(`Extend failed: ${err.message}`, 'error');
+  } finally {
+    $extendBtn.disabled = false;
+    updateActionState();
+  }
+}
+
+async function onAnalyze() {
+  const description = $('description').value.trim();
+  if (!description) { setStatus('Add a bug description first.', 'error'); return; }
+  if (state.logs.size === 0) { setStatus('Fetch some logs first.', 'error'); return; }
+
+  $analyzeBtn.disabled = true;
+  setStatus('Analyzing…', 'info');
+  $analysisCard.classList.remove('hidden');
+  $analysisBody.innerHTML = '<p class="hint">Thinking…</p>';
+
+  try {
+    const res = await fetch('/api/v2/logs/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description,
+        ticketId: $('ticketId').value || null,
+        // Send all gathered logs. Server-side truncation per-line guards
+        // against any single fat log line; the prompt shape itself is
+        // bounded to ~20K tokens at typical sizes.
+        logs: Array.from(state.logs.values()),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    renderAnalysis(data);
+    $analysisCost.textContent = `tokens: ${data.inputTokens} in / ${data.outputTokens} out`;
+    setStatus('Analysis complete.', 'success');
+  } catch (err) {
+    setStatus(`Analyze failed: ${err.message}`, 'error');
+    $analysisBody.innerHTML = `<p class="error">${err.message}</p>`;
+  } finally {
+    $analyzeBtn.disabled = false;
+  }
+}
+
+function onClear() {
+  state.logs.clear();
+  state.selected.clear();
+  renderTable();
+  $analysisCard.classList.add('hidden');
+  setStatus('Cleared.', 'info');
+}
+
+// ---- log table ----
+function mergeLogs(arr) {
+  let added = 0;
+  for (const log of arr) {
+    const key = recordKey(log);
+    if (!state.logs.has(key)) {
+      state.logs.set(key, log);
+      added++;
+    }
+  }
+  // Re-sort by timestamp on every merge — keeps the visible table stable
+  // regardless of fetch order across multiple filter / extend calls.
+  const sorted = [...state.logs.entries()].sort((a, b) =>
+    new Date(a[1].timestamp) - new Date(b[1].timestamp));
+  state.logs = new Map(sorted);
+  renderTable();
+  return added;
+}
+
+function renderTable() {
+  $logCount.textContent = state.logs.size;
+  if (state.logs.size === 0) {
+    $logTbody.innerHTML = `<tr class="empty"><td colspan="4">No logs yet — filter to begin.</td></tr>`;
+    updateActionState();
+    return;
+  }
+  // Build via DocumentFragment to avoid layout thrash for big result sets.
+  const frag = document.createDocumentFragment();
+  for (const [key, log] of state.logs) {
+    const tr = document.createElement('tr');
+    tr.dataset.key = key;
+    if (state.selected.has(key)) tr.classList.add('selected');
+    tr.innerHTML =
+      `<td class="col-pick">${state.selected.has(key) ? '●' : '○'}</td>` +
+      `<td class="col-ts mono">${formatTs(log.timestamp)}</td>` +
+      `<td class="col-svc mono">${escapeHtml(log.service)}</td>` +
+      `<td class="col-msg mono">${escapeHtml(truncate(log.message, 240))}</td>`;
+    tr.addEventListener('click', () => toggleSelected(key));
+    frag.appendChild(tr);
+  }
+  $logTbody.innerHTML = '';
+  $logTbody.appendChild(frag);
+  updateActionState();
+}
+
+function toggleSelected(key) {
+  if (state.selected.has(key)) state.selected.delete(key);
+  else state.selected.add(key);
+  // Targeted update — avoids re-rendering the whole table on every click.
+  const tr = $logTbody.querySelector(`tr[data-key="${cssEscape(key)}"]`);
+  if (tr) {
+    tr.classList.toggle('selected', state.selected.has(key));
+    tr.querySelector('.col-pick').textContent = state.selected.has(key) ? '●' : '○';
+  }
+  document.querySelector('.v2-side .card:nth-child(3) h2').textContent =
+    `Selected (${state.selected.size})`;
+  updateActionState();
+}
+
+function updateActionState() {
+  $extendBtn.disabled = state.selected.size === 0;
+  $analyzeBtn.disabled = state.logs.size === 0;
+}
+
+// ---- analysis render ----
+function renderAnalysis(a) {
+  const html = [];
+  html.push(`<h3>Summary</h3><p>${escapeHtml(a.summary || '(empty)')}</p>`);
+  if (a.suspicious?.length) {
+    html.push('<h3>Suspicious lines</h3><ul class="suspicious">');
+    for (const s of a.suspicious) html.push(`<li class="mono">${escapeHtml(s)}</li>`);
+    html.push('</ul>');
+  }
+  html.push(`<h3>Hypothesis</h3><p>${escapeHtml(a.hypothesis || '(unclear)')}</p>`);
+  if (a.suggestedFollowups?.length) {
+    html.push('<h3>Suggested followups</h3><ul>');
+    for (const f of a.suggestedFollowups) html.push(`<li>${escapeHtml(f)}</li>`);
+    html.push('</ul>');
+  }
+  $analysisBody.innerHTML = html.join('');
+}
+
+// ---- formatting ----
+function formatTs(iso) {
+  // Server returns ISO strings. Show with millisecond precision so the
+  // ordering with same-second logs is unambiguous.
+  const d = new Date(iso);
+  const pad = (n, w = 2) => String(n).padStart(w, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
+         `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}.${pad(d.getUTCMilliseconds(), 3)}`;
+}
+function truncate(s, n) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function cssEscape(s) {
+  // Polyfill-ish: CSS.escape isn't always available; for our keys (eventIds
+  // or composite strings) the safe move is to escape backslashes and quotes.
+  if (window.CSS && window.CSS.escape) return CSS.escape(s);
+  return String(s).replace(/[\\"]/g, '\\$&');
+}
