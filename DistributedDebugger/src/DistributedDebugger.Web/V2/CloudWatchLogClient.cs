@@ -168,25 +168,57 @@ public sealed class CloudWatchLogClient : IDisposable
     /// Shells out to `aws configure export-credentials --profile X` to
     /// resolve credentials. Mirrors what the V1 tool does; SSO sessions
     /// stored under ~/.aws/sso/cache work without any extra setup.
+    ///
+    /// On failure, logs loudly to stderr — silent fallback was hiding the
+    /// real error and letting the SDK fall through to the EC2 metadata
+    /// service, which produced a baffling 'Unable to get IAM security
+    /// credentials from EC2 Instance Metadata Service' on the user's
+    /// laptop. Better to surface the actual aws CLI error message.
     /// </summary>
     private static SessionAWSCredentials? LoadCredentialsViaCli(string profileName)
     {
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo
+            // Use the default JSON output — '--format process-credentials'
+            // doesn't exist in older AWS CLI builds and would silently fail.
+            var psi = new System.Diagnostics.ProcessStartInfo("aws",
+                $"configure export-credentials --profile {profileName}")
             {
-                FileName = "aws",
-                Arguments = $"configure export-credentials --profile {profileName} --format process-credentials",
                 RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
+                RedirectStandardError  = true,
+                UseShellExecute        = false,
+                CreateNoWindow         = true,
             };
             using var proc = System.Diagnostics.Process.Start(psi);
-            if (proc is null) return null;
+            if (proc is null)
+            {
+                Console.Error.WriteLine(
+                    "[v2/cw] could not start 'aws' — is the AWS CLI installed and on PATH? " +
+                    "If running Rider via a Windows shortcut, the spawned process inherits " +
+                    "the SYSTEM PATH, not your shell's. Restart Rider from a terminal where " +
+                    "`aws --version` works, or add aws to the system PATH.");
+                return null;
+            }
+
             var stdout = proc.StandardOutput.ReadToEnd();
+            var stderr = proc.StandardError.ReadToEnd();
             proc.WaitForExit(5000);
-            if (proc.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout)) return null;
+
+            if (proc.ExitCode != 0)
+            {
+                Console.Error.WriteLine(
+                    $"[v2/cw] aws CLI exited {proc.ExitCode} for profile '{profileName}': " +
+                    $"{stderr.Trim()}\n" +
+                    $"Run:  aws sso login --profile {profileName}");
+                return null;
+            }
+            if (string.IsNullOrWhiteSpace(stdout))
+            {
+                Console.Error.WriteLine(
+                    $"[v2/cw] aws CLI returned empty stdout for profile '{profileName}'");
+                return null;
+            }
+
             using var doc = System.Text.Json.JsonDocument.Parse(stdout);
             var root = doc.RootElement;
             return new SessionAWSCredentials(
@@ -194,8 +226,12 @@ public sealed class CloudWatchLogClient : IDisposable
                 root.GetProperty("SecretAccessKey").GetString(),
                 root.GetProperty("SessionToken").GetString());
         }
-        catch
+        catch (Exception ex)
         {
+            // Catch-all so a malformed config doesn't crash the whole request,
+            // but log the type and message so the cause is visible.
+            Console.Error.WriteLine(
+                $"[v2/cw] credential load threw {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
