@@ -310,7 +310,14 @@ async function onAnalyze() {
     const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     renderAnalysis(data);
-    $analysisCost.textContent = `tokens: ${data.inputTokens} in / ${data.outputTokens} out`;
+    // The schemasIncluded array names which reference schemas the analyzer
+    // prepended to the prompt. Surfacing them here is a quick sanity check
+    // that the wiring is firing — if you ever see 'schemas: (none)' the
+    // backend either failed to load the markdown files or the request
+    // bypassed the bundle.
+    const schemas = (data.schemasIncluded ?? []).join(', ') || '(none)';
+    $analysisCost.textContent =
+      `schemas: ${schemas} · tokens: ${data.inputTokens} in / ${data.outputTokens} out`;
     setStatus('Analysis complete.', 'success');
   } catch (err) {
     setStatus(`Analyze failed: ${err.message}`, 'error');

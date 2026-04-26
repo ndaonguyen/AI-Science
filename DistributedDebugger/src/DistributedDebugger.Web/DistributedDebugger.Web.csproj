@@ -10,4 +10,15 @@
     <ProjectReference Include="..\DistributedDebugger.Agent\DistributedDebugger.Agent.csproj" />
   </ItemGroup>
 
+  <!-- Schema markdown files travel two dirs up from this csproj — they're a
+       documentation-style asset, not service-specific code. Copy them to
+       bin/<config>/<tfm>/schemas/ so the LogAnalyzer can read them at
+       runtime via AppContext.BaseDirectory regardless of cwd. -->
+  <ItemGroup>
+    <Content Include="..\..\schemas\*.md">
+      <Link>schemas\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

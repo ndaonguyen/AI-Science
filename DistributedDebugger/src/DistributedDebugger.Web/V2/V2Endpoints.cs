@@ -27,6 +27,12 @@ public static class V2Endpoints
         var cwClient = new CloudWatchLogClient();
         app.Lifetime.ApplicationStopping.Register(() => cwClient.Dispose());
 
+        // Load schema markdowns once at startup; the LogAnalyzer prepends
+        // them to every analyze prompt so the model always knows the shape
+        // of CoCo's authoring-service / content-search-service collections
+        // without the user having to repeat it in every bug description.
+        var schemas = new SchemaLoader();
+
         app.MapPost("/api/v2/logs/filter", async (
             FilterRequest req, HttpContext ctx, CancellationToken ct) =>
         {
@@ -153,6 +159,7 @@ public static class V2Endpoints
                     (req.Evidence ?? Array.Empty<EvidenceItem>())
                         .Where(e => !string.IsNullOrWhiteSpace(e.Content))
                         .ToList(),
+                    schemas.All,
                     ct);
                 return Results.Ok(result);
             }

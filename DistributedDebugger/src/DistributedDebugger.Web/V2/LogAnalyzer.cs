@@ -31,6 +31,7 @@ public sealed class LogAnalyzer
         string? ticketId,
         IReadOnlyList<LogRecord> logs,
         IReadOnlyList<V2Endpoints.EvidenceItem> evidence,
+        IReadOnlyList<SchemaDoc> schemas,
         CancellationToken ct)
     {
         if (logs.Count == 0)
@@ -40,31 +41,38 @@ public sealed class LogAnalyzer
                 Suspicious: Array.Empty<string>(),
                 Hypothesis: "(empty input)",
                 SuggestedFollowups: Array.Empty<string>(),
+                SchemasIncluded: Array.Empty<string>(),
                 InputTokens: 0,
                 OutputTokens: 0);
         }
 
-        // System prompt acknowledges the possibility of supporting evidence
-        // alongside logs. When the user has pasted Mongo / OpenSearch / Kafka
-        // payloads, we want the model to actively cross-reference (e.g. 'the
-        // log says X but the Mongo doc shows Y') rather than treating each
-        // input in isolation.
+        // System prompt acknowledges schemas (when present) and evidence so
+        // the model knows it has BOTH 'reference shape' and 'concrete logs +
+        // documents' to reason over. When schemas are bundled the model can
+        // spot field-level mismatches (e.g. the well-known
+        // ImageComponentModel.assetId-as-non-nullable-Guid bug) without the
+        // user having to re-explain the data model in every bug report.
         var systemPrompt =
             "You are a senior backend engineer analysing CloudWatch logs from a " +
             "distributed microservice system (CoCo at Education Perfect: MongoDB, " +
             "OpenSearch, Kafka, ECS). The user has already filtered the logs down " +
-            "to a specific set they want analysed, and may have pasted supporting " +
-            "evidence from MongoDB, OpenSearch, Kafka, or other sources. " +
-            "Read every log line. Look for exceptions, stack traces, error/warn " +
-            "lines, timeouts, connection failures, null references, retries, and " +
-            "any behaviour inconsistent with the bug description. When evidence is " +
-            "provided, cross-reference it against the logs (e.g. 'the log claims X " +
-            "but the Mongo document shows Y'). Quote actual log lines and evidence " +
-            "snippets as support — never invent details that aren't in the input. " +
-            "If the cause still isn't clear, say so honestly and suggest what to " +
-            "investigate next (Mongo? OpenSearch? Kafka? other services?).";
+            "to a specific set they want analysed, may have pasted supporting " +
+            "evidence from MongoDB, OpenSearch, Kafka, or other sources, and the " +
+            "prompt may also include reference SCHEMAS for the relevant services. " +
+            "Use the schemas as ground truth for field names, types, and " +
+            "nullability — if evidence shows a value that violates the schema " +
+            "(e.g. null where the model declares a non-nullable Guid), call it " +
+            "out as a likely cause. Read every log line. Look for exceptions, " +
+            "stack traces, error/warn lines, timeouts, connection failures, null " +
+            "references, retries, and any behaviour inconsistent with the bug " +
+            "description. When evidence is provided, cross-reference it against " +
+            "the logs (e.g. 'the log claims X but the Mongo document shows Y'). " +
+            "Quote actual log lines and evidence snippets as support — never " +
+            "invent details that aren't in the input. If the cause still isn't " +
+            "clear, say so honestly and suggest what to investigate next " +
+            "(Mongo? OpenSearch? Kafka? other services?).";
 
-        var userPrompt = BuildUserPrompt(bugDescription, ticketId, logs, evidence);
+        var userPrompt = BuildUserPrompt(bugDescription, ticketId, logs, evidence, schemas);
 
         var client = new ChatClient(model: _model, apiKey: _apiKey);
         var options = new ChatCompletionOptions
@@ -94,6 +102,7 @@ public sealed class LogAnalyzer
             Suspicious: parsed.Suspicious,
             Hypothesis: parsed.Hypothesis,
             SuggestedFollowups: parsed.SuggestedFollowups,
+            SchemasIncluded: schemas.Select(s => s.Name).ToArray(),
             InputTokens: response.Value.Usage?.InputTokenCount ?? 0,
             OutputTokens: response.Value.Usage?.OutputTokenCount ?? 0);
     }
@@ -102,9 +111,36 @@ public sealed class LogAnalyzer
         string bug,
         string? ticket,
         IReadOnlyList<LogRecord> logs,
-        IReadOnlyList<V2Endpoints.EvidenceItem> evidence)
+        IReadOnlyList<V2Endpoints.EvidenceItem> evidence,
+        IReadOnlyList<SchemaDoc> schemas)
     {
         var sb = new System.Text.StringBuilder();
+
+        // Schemas FIRST so the model treats them as reference material it
+        // applies to everything that follows. Each schema is fenced as
+        // markdown — already-markdown content stays markdown; the LLM
+        // handles nested fences fine. Skip the section entirely when no
+        // schemas are loaded so we don't waste tokens on a placeholder.
+        if (schemas is { Count: > 0 })
+        {
+            sb.AppendLine("## Reference: schemas");
+            sb.AppendLine();
+            sb.AppendLine(
+                "These describe the MongoDB collection shapes for the relevant CoCo " +
+                "services. Use them as ground truth when interpreting evidence: " +
+                "field names, types, nullability, and the discriminator (`_t`) on " +
+                "polymorphic collections. If a pasted document violates the schema " +
+                "(e.g. `null` where the model declares a non-nullable Guid), say so.");
+            sb.AppendLine();
+            foreach (var s in schemas)
+            {
+                sb.Append("### ").AppendLine(s.Name);
+                sb.AppendLine();
+                sb.AppendLine(s.Content);
+                sb.AppendLine();
+            }
+        }
+
         sb.AppendLine("## Bug context");
         if (!string.IsNullOrWhiteSpace(ticket))
             sb.AppendLine($"Ticket: {ticket}");
@@ -241,5 +277,10 @@ public sealed record AnalysisResult(
     IReadOnlyList<string> Suspicious,
     string Hypothesis,
     IReadOnlyList<string> SuggestedFollowups,
+    // Names of schema docs that were prepended to the prompt — surfaces in
+    // the API response so the UI can show 'schemas: authoring-service,
+    // content-search-service' next to the token cost. Useful for confirming
+    // the wiring works without reading the prompt itself.
+    IReadOnlyList<string> SchemasIncluded,
     int InputTokens,
     int OutputTokens);
