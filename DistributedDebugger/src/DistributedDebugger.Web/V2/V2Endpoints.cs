@@ -195,12 +195,17 @@ public static class V2Endpoints
     /// One piece of supporting evidence pasted in by the user. Kind is one of
     /// "mongo" / "opensearch" / "kafka" / "note" — used to label the section
     /// in the prompt and pick the right wording. Title is short context the
-    /// user provides ("activities collection — _id act-789"), Content is the
-    /// raw payload they pasted (a JSON document, a query hit, an event body).
+    /// user provides ("activities collection — _id act-789"), Command is the
+    /// query/shell-command they ran to get the result (e.g.
+    /// db.activities.findOne({_id: ...})) — captured so the LLM can reason
+    /// about the SHAPE of what was asked, not just what came back. Content
+    /// is the raw payload they pasted (a JSON document, a query hit, an
+    /// event body). For "note" evidence Command is unused.
     /// </summary>
     public sealed record EvidenceItem(
         string? Kind,
         string? Title,
+        string? Command,
         string? Content);
 
     // ---- helpers ----

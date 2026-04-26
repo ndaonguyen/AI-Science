@@ -8,7 +8,7 @@
        the URL distinct from the cached version regardless of HTTP cache
        headers. Saves having to fight browser DevTools. -->
   <link rel="stylesheet" href="styles.css?v=2">
-  <link rel="stylesheet" href="v2.css?v=10">
+  <link rel="stylesheet" href="v2.css?v=11">
 </head>
 <body>
   <header class="topbar">
@@ -156,12 +156,18 @@
         </div>
 
         <!-- Hidden form revealed when one of the buttons above is clicked.
-             Same form for all kinds — only the heading changes. -->
+             Same form for all kinds — the heading and field labels swap
+             based on kind. Command field hidden for 'note' kind. -->
         <div id="evidenceForm" class="evidence-form hidden">
           <h3 id="evidenceFormHeading">Add evidence</h3>
           <label>Title (short context)
             <input type="text" id="evidenceFormTitle"
                    placeholder="e.g. ComponentBlockModel — _id 67abcd">
+          </label>
+          <label id="evidenceFormCommandLabel">
+            <span id="evidenceFormCommandText">Command</span>
+            <textarea id="evidenceFormCommand" rows="2"
+                      placeholder="e.g. db.activities.findOne({_id: 'act-789'})"></textarea>
           </label>
           <label>Content (paste here)
             <textarea id="evidenceFormContent" rows="8"
@@ -186,6 +192,6 @@
     </section>
   </main>
 
-  <script src="v2.js?v=10"></script>
+  <script src="v2.js?v=11"></script>
 </body>
 </html>

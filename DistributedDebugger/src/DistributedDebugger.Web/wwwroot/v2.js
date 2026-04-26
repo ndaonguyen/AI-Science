@@ -62,6 +62,9 @@ const $evidenceList         = $('evidenceList');
 const $evidenceForm         = $('evidenceForm');
 const $evidenceFormHeading  = $('evidenceFormHeading');
 const $evidenceFormTitle    = $('evidenceFormTitle');
+const $evidenceFormCommand  = $('evidenceFormCommand');
+const $evidenceFormCommandLabel = $('evidenceFormCommandLabel');
+const $evidenceFormCommandText  = $('evidenceFormCommandText');
 const $evidenceFormContent  = $('evidenceFormContent');
 const $evidenceFormSave     = $('evidenceFormSave');
 const $evidenceFormCancel   = $('evidenceFormCancel');
@@ -300,8 +303,8 @@ async function onAnalyze() {
         ticketId: $('ticketId').value || null,
         logs: logsToAnalyze,
         // Strip the local id field — the server doesn't need or expect it.
-        evidence: state.evidence.map(({ kind, title, content }) =>
-          ({ kind, title, content })),
+        evidence: state.evidence.map(({ kind, title, command, content }) =>
+          ({ kind, title, command, content })),
       }),
     });
     const data = await safeJson(res);
@@ -342,11 +345,39 @@ const EVIDENCE_PLACEHOLDERS = {
   note:       'e.g. observed in production around 09:09 UTC',
 };
 
+// Per-kind labels and placeholders for the Command field. The Command
+// captures HOW the user got the result (the query / shell command run),
+// which lets the LLM reason about what was being asked, not just what
+// came back. Notes have no command — it's free-form text.
+const EVIDENCE_COMMAND_LABELS = {
+  mongo:      'Mongo shell command',
+  opensearch: 'OpenSearch query DSL',
+  kafka:      'Kafka consumer command',
+};
+const EVIDENCE_COMMAND_PLACEHOLDERS = {
+  mongo:      "e.g. db.activities.findOne({_id: ObjectId('67abcd...')})",
+  opensearch: 'e.g. GET /activities/_search\n{ "query": { "term": { "_id": "act-789" } } }',
+  kafka:      'e.g. kafka-console-consumer --topic content-indexed --partition 3 --offset 12345 --max-messages 1',
+};
+
 function openEvidenceForm(kind) {
   state.evidenceFormKind = kind;
   $evidenceFormHeading.textContent = `Add ${EVIDENCE_LABELS[kind] ?? 'evidence'}`;
   $evidenceFormTitle.value = '';
   $evidenceFormTitle.placeholder = EVIDENCE_PLACEHOLDERS[kind] ?? '';
+  $evidenceFormCommand.value = '';
+
+  // Notes are free-form (no query that produced them) so the Command
+  // field is hidden entirely. For the three real kinds, label and
+  // placeholder swap based on what makes sense for that ecosystem.
+  if (kind === 'note') {
+    $evidenceFormCommandLabel.classList.add('hidden');
+  } else {
+    $evidenceFormCommandLabel.classList.remove('hidden');
+    $evidenceFormCommandText.textContent = EVIDENCE_COMMAND_LABELS[kind] ?? 'Command';
+    $evidenceFormCommand.placeholder = EVIDENCE_COMMAND_PLACEHOLDERS[kind] ?? '';
+  }
+
   $evidenceFormContent.value = '';
   $evidenceForm.classList.remove('hidden');
   // Auto-focus title so the user can start typing immediately.
@@ -362,6 +393,7 @@ function saveEvidenceFromForm() {
   const kind = state.evidenceFormKind ?? 'note';
   const content = $evidenceFormContent.value.trim();
   const title = $evidenceFormTitle.value.trim();
+  const command = kind === 'note' ? '' : $evidenceFormCommand.value.trim();
   if (!content) {
     setStatus('Evidence content is required.', 'error');
     return;
@@ -372,6 +404,7 @@ function saveEvidenceFromForm() {
     id: `ev-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     kind,
     title,
+    command,
     content,
   });
   closeEvidenceForm();
@@ -393,12 +426,16 @@ function renderEvidence() {
   for (const item of state.evidence) {
     const card = document.createElement('div');
     card.className = `evidence-card evidence-${item.kind}`;
+    const commandHtml = item.command
+      ? `<pre class="evidence-command mono">$ ${escapeHtml(truncate(item.command, 600))}</pre>`
+      : '';
     card.innerHTML =
       `<div class="evidence-card-header">` +
         `<span class="evidence-kind">${escapeHtml(EVIDENCE_LABELS[item.kind] ?? item.kind)}</span>` +
         (item.title ? `<span class="evidence-title">${escapeHtml(item.title)}</span>` : '') +
         `<button type="button" class="evidence-delete" data-id="${escapeHtml(item.id)}" title="Remove this evidence">✕</button>` +
       `</div>` +
+      commandHtml +
       `<pre class="evidence-content mono">${escapeHtml(truncate(item.content, 1500))}</pre>`;
     frag.appendChild(card);
   }

@@ -141,6 +141,23 @@ public sealed class LogAnalyzer
                 sb.Append("### ").Append(label);
                 if (!string.IsNullOrWhiteSpace(item.Title)) sb.Append(" — ").Append(item.Title);
                 sb.AppendLine();
+
+                // Command goes BEFORE the content so the LLM reads 'here's
+                // what was asked' first, then 'here's what came back' — the
+                // natural reading order. Skipped for empty commands and for
+                // 'note' evidence (which has no query). Bare-fenced so the
+                // model can read it as a literal command without parsing
+                // markdown emphasis or lists.
+                if (!string.IsNullOrWhiteSpace(item.Command) &&
+                    !string.Equals(item.Kind, "note", StringComparison.OrdinalIgnoreCase))
+                {
+                    sb.AppendLine("Command:");
+                    sb.AppendLine("```");
+                    sb.AppendLine(TruncateForPrompt(item.Command!));
+                    sb.AppendLine("```");
+                    sb.AppendLine("Result:");
+                }
+
                 sb.AppendLine("```");
                 sb.AppendLine(TruncateForPrompt(item.Content ?? ""));
                 sb.AppendLine("```");
