@@ -22,15 +22,23 @@ public sealed class V3RegressionRunner
     private readonly LlmAsJudgeGrader _grader;
     private readonly string _openaiKey;
     private readonly IReadOnlyList<SchemaDoc> _schemas;
+    private readonly Func<IInvestigationMemory>? _memoryFactory;
 
     public V3RegressionRunner(
         LlmAsJudgeGrader grader,
         string openaiKey,
-        IReadOnlyList<SchemaDoc> schemas)
+        IReadOnlyList<SchemaDoc> schemas,
+        // Optional memory factory. When provided, configs with MemoryEnabled
+        // = true will read from / write to a memory store created by this
+        // factory. The factory pattern (instead of a passed-in store) lets
+        // the harness CLI decide whether to use a temp path or a persistent
+        // one without baking that policy into the runner.
+        Func<IInvestigationMemory>? memoryFactory = null)
     {
         _grader = grader;
         _openaiKey = openaiKey;
         _schemas = schemas;
+        _memoryFactory = memoryFactory;
     }
 
     public async Task<IReadOnlyList<V3RegressionRow>> RunAsync(
@@ -43,6 +51,28 @@ public sealed class V3RegressionRunner
 
         foreach (var cfg in configs)
         {
+            // Construct memory ONCE per config — that way two cases sharing
+            // a memory-enabled config build up retrievable history within
+            // the run. Different configs get separate stores when the
+            // factory provides them (typically true: it'll create a path
+            // like /tmp/dd-eval-{configId}.db).
+            IInvestigationMemory? memoryForConfig = null;
+            MemoryPipeline? memoryPipeline = null;
+            if (cfg.MemoryEnabled && _memoryFactory is not null)
+            {
+                try
+                {
+                    memoryForConfig = _memoryFactory();
+                    memoryPipeline = new MemoryPipeline(
+                        memoryForConfig, _openaiKey, cfg.MemoryTopK, cfg.MemoryMinSimilarity);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(
+                        $"[v3/eval] memory init failed for config {cfg.Id}, continuing without: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+
             foreach (var @case in cases)
             {
                 ct.ThrowIfCancellationRequested();
@@ -50,7 +80,7 @@ public sealed class V3RegressionRunner
                 V3RegressionRow row;
                 try
                 {
-                    row = await RunOneAsync(@case, cfg, ct);
+                    row = await RunOneAsync(@case, cfg, memoryPipeline, ct);
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -69,6 +99,8 @@ public sealed class V3RegressionRunner
                         RagUsed: false,
                         RagFromCount: @case.Logs.Count,
                         RagKeptCount: @case.Logs.Count,
+                        MemoryUsed: false,
+                        MemoryHits: 0,
                         Grade: null);
                 }
 
@@ -81,7 +113,9 @@ public sealed class V3RegressionRunner
     }
 
     private async Task<V3RegressionRow> RunOneAsync(
-        EvalCaseV3 @case, V3RegressionConfig cfg, CancellationToken ct)
+        EvalCaseV3 @case, V3RegressionConfig cfg,
+        MemoryPipeline? memoryPipeline,
+        CancellationToken ct)
     {
         var startedAt = DateTimeOffset.UtcNow;
 
@@ -103,6 +137,17 @@ public sealed class V3RegressionRunner
             ragKeptCount = outcome.KeptCount;
         }
 
+        // Optional memory step. Read first to build the prompt section.
+        // Same fail-soft pattern as the live endpoint: if read blows up,
+        // continue without memory.
+        MemoryReadOutcome memoryOutcome = MemoryReadOutcome.Skipped("disabled");
+        string? memorySection = null;
+        if (memoryPipeline is not null)
+        {
+            memoryOutcome = await memoryPipeline.ReadAsync(@case.Description, ct);
+            memorySection = MemoryPipeline.RenderPromptSection(memoryOutcome.Hits);
+        }
+
         // Adapt evidence to the V3Endpoints type the analyzer expects.
         var evidence = @case.Evidence
             .Select(e => new V3Endpoints.EvidenceItem(
@@ -116,9 +161,30 @@ public sealed class V3RegressionRunner
             logs: analyzeLogs,
             evidence: evidence,
             schemas: _schemas,
-            ct);
+            ct,
+            memorySection: memorySection);
 
         var finishedAt = DateTimeOffset.UtcNow;
+
+        // Write to memory AFTER analyze succeeds. We use the embedding from
+        // the read step (saves a second embeddings call). When read was
+        // skipped at the embed phase, embedding is empty and we skip the
+        // write — fine, the next case will populate.
+        if (memoryPipeline is not null && memoryOutcome.QueryEmbedding.Length > 0)
+        {
+            var entry = new InvestigationMemoryEntry(
+                Id: Guid.NewGuid().ToString("N"),
+                CreatedAt: DateTimeOffset.UtcNow,
+                Description: @case.Description,
+                Hypothesis: result.Hypothesis,
+                EvidenceSummary: string.Join("; ", @case.Evidence
+                    .Select(e => string.IsNullOrWhiteSpace(e.Title)
+                        ? e.Kind : $"{e.Kind}: {e.Title}")),
+                TicketId: @case.TicketId,
+                SchemasIncluded: result.SchemasIncluded,
+                Embedding: memoryOutcome.QueryEmbedding);
+            await memoryPipeline.WriteAsync(entry, ct);
+        }
 
         // Adapt to V1 shapes for the grader. Existing LlmAsJudgeGrader is
         // unchanged — that's the win of the adapter approach.
@@ -139,6 +205,8 @@ public sealed class V3RegressionRunner
             RagUsed: ragUsed,
             RagFromCount: ragFromCount,
             RagKeptCount: ragKeptCount,
+            MemoryUsed: memoryOutcome.Used,
+            MemoryHits: memoryOutcome.Hits.Count,
             Grade: grade);
     }
 
@@ -173,24 +241,36 @@ public sealed record V3RegressionRow(
     bool RagUsed,
     int RagFromCount,
     int RagKeptCount,
+    bool MemoryUsed,
+    int MemoryHits,
     GradeResult? Grade);
 
 /// <summary>
 /// One named configuration to run all cases against. Lets you A/B different
-/// models or RAG settings cleanly — the leaderboard shows pass-rate per
-/// config across the case set.
+/// models, RAG settings, or memory settings cleanly — the leaderboard shows
+/// pass-rate per config across the case set.
 /// </summary>
 public sealed record V3RegressionConfig(
     string Id,
     string AnalyzerModel,
     bool RagEnabled,
     int RagThreshold,
-    int RagTopK)
+    int RagTopK,
+    /// <summary>
+    /// Whether to populate "Related past investigations" from a memory
+    /// store. Eval runs use a SEPARATE memory db (see runner) so they don't
+    /// contaminate the user's real memory with synthetic cases.
+    /// </summary>
+    bool MemoryEnabled = false,
+    int MemoryTopK = 3,
+    float MemoryMinSimilarity = 0.5f)
 {
     /// <summary>
     /// Default config: gpt-4o-mini analyzer, RAG enabled with threshold 100
-    /// and topK 25. Mirrors the V3 live endpoint defaults so eval results
-    /// reflect production behaviour.
+    /// and topK 25, memory off. Mirrors the V3 live endpoint defaults
+    /// EXCEPT for memory — by default eval runs without memory because most
+    /// cases are evaluated independently. Use the WithMemory config below
+    /// to A/B with memory on.
     /// </summary>
     public static V3RegressionConfig Baseline { get; } = new(
         Id: "baseline",
@@ -209,4 +289,19 @@ public sealed record V3RegressionConfig(
         RagEnabled: false,
         RagThreshold: int.MaxValue,
         RagTopK: int.MaxValue);
+
+    /// <summary>
+    /// Memory enabled — for runs that pre-populate the memory db with seed
+    /// cases and then measure whether retrieval improves analysis. Most
+    /// useful when you have multiple cases in the suite that share patterns;
+    /// running 'with-memory' against a single isolated case isn't very
+    /// informative (the memory has nothing to retrieve).
+    /// </summary>
+    public static V3RegressionConfig WithMemory { get; } = new(
+        Id: "with-memory",
+        AnalyzerModel: "gpt-4o-mini",
+        RagEnabled: true,
+        RagThreshold: 100,
+        RagTopK: 25,
+        MemoryEnabled: true);
 }

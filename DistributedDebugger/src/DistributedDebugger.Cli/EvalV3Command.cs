@@ -7,13 +7,22 @@ namespace DistributedDebugger.Cli;
 /// <summary>
 /// The `debugger eval-v3` subcommand. Loads V3 eval cases from YAML, runs
 /// them through <see cref="LogAnalyzer"/> against one or more named configs,
-/// then prints a small leaderboard (pass-rate, average tokens, RAG usage).
+/// then prints a small leaderboard (pass-rate, average tokens, RAG usage,
+/// memory hits).
 ///
-/// Default cases dir: eval-cases-v3/. Default configs: baseline, no-rag.
+/// Default cases dir: eval-cases-v3/. Default configs: baseline, no-rag,
+/// with-memory (run all three when no --config is specified).
 /// Useful workflow:
-///   debugger eval-v3                                   # both configs, default cases
-///   debugger eval-v3 --config baseline                 # just baseline
-///   debugger eval-v3 --config baseline --config no-rag # explicit A/B
+///   debugger eval-v3                                       # all configs
+///   debugger eval-v3 --config baseline                     # just baseline
+///   debugger eval-v3 --config baseline --config no-rag     # explicit A/B
+///   debugger eval-v3 --config with-memory                  # measure memory effect
+///
+/// Memory note: eval runs always use a SEPARATE memory db
+/// (/tmp/dd-eval-memory.db by default, override via DD_EVAL_MEMORY_DB_PATH)
+/// so synthetic eval cases never pollute the user's real memory at
+/// ~/.dd/memory.db. The file is wiped at the start of each run for
+/// reproducibility — same eval input twice produces the same results.
 /// </summary>
 public static class EvalV3Command
 {
@@ -68,7 +77,34 @@ public static class EvalV3Command
         Console.WriteLine();
 
         var grader = new LlmAsJudgeGrader(openAiKey, judgeModel);
-        var runner = new V3RegressionRunner(grader, openAiKey, schemas.All);
+
+        // Memory factory for eval runs. CRITICAL: we use a SEPARATE db
+        // path from the user's real memory (which sits at ~/.dd/memory.db).
+        // If we used the same one, every eval run would pollute the user's
+        // memory with synthetic cases — destroying its production value.
+        // Default: /tmp/dd-eval-memory-{configId}.db, freshly created per
+        // run because we delete it at the start (see below). Override via
+        // DD_EVAL_MEMORY_DB_PATH if you want persistence across runs.
+        var evalMemoryPath = Environment.GetEnvironmentVariable("DD_EVAL_MEMORY_DB_PATH")
+            ?? Path.Combine(Path.GetTempPath(), "dd-eval-memory.db");
+
+        // Wipe stale eval memory on each run so that 'with-memory' results
+        // are reproducible — otherwise yesterday's eval cases would still
+        // be in the db today and the retrievals would change session to
+        // session even with no code changes.
+        if (File.Exists(evalMemoryPath))
+        {
+            try { File.Delete(evalMemoryPath); }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Warning: couldn't clear eval memory at {evalMemoryPath}: {ex.Message}");
+            }
+        }
+
+        Func<IInvestigationMemory> memoryFactory = () =>
+            new SqliteVecInvestigationMemory(evalMemoryPath);
+
+        var runner = new V3RegressionRunner(grader, openAiKey, schemas.All, memoryFactory);
 
         var rows = await runner.RunAsync(
             cases, configs,
@@ -84,11 +120,15 @@ public static class EvalV3Command
     {
         var known = new Dictionary<string, V3RegressionConfig>(StringComparer.OrdinalIgnoreCase)
         {
-            ["baseline"] = V3RegressionConfig.Baseline,
-            ["no-rag"]   = V3RegressionConfig.NoRag,
+            ["baseline"]    = V3RegressionConfig.Baseline,
+            ["no-rag"]      = V3RegressionConfig.NoRag,
+            ["with-memory"] = V3RegressionConfig.WithMemory,
         };
 
         if (requested.Count == 0)
+            // Default: run all configs side-by-side. Useful for the A/B
+            // workflow where you've just changed the analyzer prompt and
+            // want to see what's better/worse across the full matrix.
             return known.Values.ToList();
 
         var picked = new List<V3RegressionConfig>();
@@ -97,7 +137,8 @@ public static class EvalV3Command
             if (known.TryGetValue(id, out var cfg))
                 picked.Add(cfg);
             else
-                Console.Error.WriteLine($"Unknown config '{id}', skipping.");
+                Console.Error.WriteLine(
+                    $"Unknown config '{id}', skipping. Available: {string.Join(", ", known.Keys)}");
         }
         return picked;
     }
@@ -106,9 +147,14 @@ public static class EvalV3Command
     {
         var status = r.Passed ? "✓ PASS" : "✗ FAIL";
         var rag = r.RagUsed ? $"RAG {r.RagKeptCount}/{r.RagFromCount}" : "no RAG";
+        // Memory column: shows hits-this-case rather than corpus-size because
+        // the corpus is per-config and grows as eval runs through cases. The
+        // first case in a 'with-memory' run will always show 'mem 0' (nothing
+        // to retrieve yet); later cases may show 'mem 1'+ if patterns repeat.
+        var mem = r.MemoryUsed ? $"mem {r.MemoryHits}" : "no mem";
         Console.WriteLine(
             $"  [{r.ConfigId}] {status}  {r.CaseId}  " +
-            $"({rag}, {r.InputTokens}+{r.OutputTokens} tok, {r.WallTime.TotalSeconds:F1}s)");
+            $"({rag}, {mem}, {r.InputTokens}+{r.OutputTokens} tok, {r.WallTime.TotalSeconds:F1}s)");
         if (r.Error is not null) Console.WriteLine($"      ! {r.Error}");
         if (r.Grade is { } g && !string.IsNullOrWhiteSpace(g.JudgeRationale))
             Console.WriteLine($"      → {g.JudgeRationale}");

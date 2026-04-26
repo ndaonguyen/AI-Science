@@ -87,6 +87,24 @@ body {
 }
 .checkbox-item input { width: auto !important; }
 
+/* Inline checkbox-with-label for single toggle controls (memory on/off etc.).
+   Different from .checkbox-item which is for grouped service pickers — this
+   one is its own row. The label goes after the checkbox; that direction
+   reads more naturally for boolean toggles ('☑ Include past investigations'). */
+.checkbox-inline {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0 !important;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+.checkbox-inline input {
+  width: auto !important;
+  margin: 0;
+}
+
 /* Time picker inputs stack vertically so a wide datetime-local widget
    never gets pushed outside the card. The arrow becomes a small label
    between them. Looks tidier and works on any sidebar width. */

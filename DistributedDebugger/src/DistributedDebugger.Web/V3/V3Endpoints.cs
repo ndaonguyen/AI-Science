@@ -35,6 +35,30 @@ public static class V3Endpoints
         // without the user having to repeat it in every bug description.
         var schemas = new SchemaLoader();
 
+        // Investigation memory — persists past analyses so similar future
+        // bugs can retrieve them as 'related past investigations'. Lazy:
+        // we don't construct the SQLite-backed store until the first request
+        // that needs it, so a process that never calls /analyze never opens
+        // the db. Path can be overridden via DD_MEMORY_DB_PATH (used by the
+        // eval harness to keep its synthetic cases out of your real memory).
+        IInvestigationMemory? memoryStore = null;
+        IInvestigationMemory GetMemoryStore()
+        {
+            // Double-check is fine — endpoint handlers already serialise
+            // around the singleton via ASP.NET's request pipeline; we only
+            // race ourselves on first construction.
+            if (memoryStore is not null) return memoryStore;
+            var path = Environment.GetEnvironmentVariable("DD_MEMORY_DB_PATH");
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                path = Path.Combine(home, ".dd", "memory.db");
+            }
+            memoryStore = new SqliteVecInvestigationMemory(path);
+            Console.Error.WriteLine($"[v3/memory] store initialised at {path}");
+            return memoryStore;
+        }
+
         app.MapPost("/api/v3/logs/filter", async (
             FilterRequest req, HttpContext ctx, CancellationToken ct) =>
         {
@@ -185,11 +209,82 @@ public static class V3Endpoints
                         ? $"[v3/analyze] RAG: {ragOutcome.FromCount} → {ragOutcome.KeptCount} (threshold {ragOutcome.Threshold}, topK {topK})"
                         : $"[v3/analyze] RAG: skipped — {ragOutcome.FromCount} ≤ threshold {ragOutcome.Threshold}");
 
-                // ---- LLM analysis with the RAG-narrowed set ----
+                // ---- Memory step ----
+                // Decide whether to use memory: per-request flag wins, else
+                // env default (on unless DD_MEMORY_DISABLED). When off we
+                // still WRITE the result afterwards (so memory keeps growing
+                // even during 'no-memory' runs) — only the read side is
+                // skipped.
+                var memoryOff = string.Equals(
+                    Environment.GetEnvironmentVariable("DD_MEMORY_DISABLED"),
+                    "1", StringComparison.OrdinalIgnoreCase);
+                var useMemory = req.UseMemory ?? !memoryOff;
+
+                MemoryReadOutcome memoryOutcome = MemoryReadOutcome.Skipped("disabled");
+                MemoryPipeline? memoryPipeline = null;
+                string? memorySection = null;
+                if (useMemory)
+                {
+                    var memTopK = ParseEnvInt("V3_MEMORY_TOPK", defaultValue: 3);
+                    var memMinSim = ParseEnvFloat("V3_MEMORY_MIN_SIM", defaultValue: 0.5f);
+                    try
+                    {
+                        memoryPipeline = new MemoryPipeline(
+                            GetMemoryStore(), openaiKey, memTopK, memMinSim);
+                        memoryOutcome = await memoryPipeline.ReadAsync(req.Description!, ct);
+                        memorySection = MemoryPipeline.RenderPromptSection(memoryOutcome.Hits);
+                        Console.Error.WriteLine(
+                            memoryOutcome.Used
+                                ? $"[v3/analyze] memory: {memoryOutcome.Hits.Count} hits of {memoryOutcome.CorpusSize} (min similarity {memMinSim})"
+                                : $"[v3/analyze] memory: skipped — {memoryOutcome.SkipReason}");
+                    }
+                    catch (Exception ex)
+                    {
+                        // Memory init itself blew up (vec0 missing, db locked,
+                        // etc). Log and continue — analysis is the priority.
+                        Console.Error.WriteLine(
+                            $"[v3/analyze] memory: init failed, continuing without — {ex.GetType().Name}: {ex.Message}");
+                        memoryOutcome = MemoryReadOutcome.Skipped($"init failed: {ex.Message}");
+                    }
+                }
+
+                // ---- LLM analysis with the RAG-narrowed set + memory section ----
                 var analyzer = new LogAnalyzer(openaiKey);
                 var result = await analyzer.AnalyzeAsync(
                     req.Description, req.TicketId, ragOutcome.Logs,
-                    evidence, schemas.All, ct);
+                    evidence, schemas.All, ct,
+                    memorySection: memorySection);
+
+                // ---- Memory write (after success) ----
+                // Persist this analysis to memory so future similar bugs can
+                // retrieve it. We honour the toggle literally: when memory
+                // is off (request flag false or env disabled), memoryPipeline
+                // is null and we skip BOTH read and write. That respects the
+                // user's explicit choice — flipping memory off shouldn't
+                // silently keep recording.
+                if (memoryPipeline is not null && !string.IsNullOrWhiteSpace(result.Hypothesis))
+                {
+                    var entry = new InvestigationMemoryEntry(
+                        Id: Guid.NewGuid().ToString("N"),
+                        CreatedAt: DateTimeOffset.UtcNow,
+                        Description: req.Description!.Trim(),
+                        Hypothesis: result.Hypothesis,
+                        EvidenceSummary: SummariseEvidence(evidence),
+                        TicketId: req.TicketId,
+                        SchemasIncluded: result.SchemasIncluded,
+                        // Reuse the embedding from the read step to avoid
+                        // paying for a second embeddings call. If read was
+                        // skipped before reaching the embed call (memory off
+                        // entirely), the embedding is empty and we'll skip
+                        // the write — that's the right call: we'd need to
+                        // pay for an extra embed just to remember a result
+                        // the user explicitly opted out of remembering.
+                        Embedding: memoryOutcome.QueryEmbedding);
+                    if (entry.Embedding.Length > 0)
+                    {
+                        await memoryPipeline.WriteAsync(entry, ct);
+                    }
+                }
 
                 // Surface RAG bookkeeping in the response so the UI can show
                 // 'RAG: kept 25 of 240 (threshold 100)' or 'RAG: skipped'.
@@ -209,6 +304,14 @@ public static class V3Endpoints
                         fromCount = ragOutcome.FromCount,
                         keptCount = ragOutcome.KeptCount,
                         topK,
+                    },
+                    memory = new
+                    {
+                        enabled       = useMemory,
+                        used          = memoryOutcome.Used,
+                        retrievedCount= memoryOutcome.Hits.Count,
+                        corpusSize    = memoryOutcome.CorpusSize,
+                        skipReason    = memoryOutcome.SkipReason,
                     },
                 });
             }
@@ -230,6 +333,38 @@ public static class V3Endpoints
         var raw = Environment.GetEnvironmentVariable(name);
         if (string.IsNullOrWhiteSpace(raw)) return defaultValue;
         return int.TryParse(raw, out var n) && n > 0 ? n : defaultValue;
+    }
+
+    /// <summary>
+    /// Parse a float environment variable with a default. Used for the
+    /// memory similarity threshold (V3_MEMORY_MIN_SIM); InvariantCulture so
+    /// '0.5' is parsed the same on comma-locale machines.
+    /// </summary>
+    private static float ParseEnvFloat(string name, float defaultValue)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(raw)) return defaultValue;
+        return float.TryParse(raw, System.Globalization.NumberStyles.Float,
+                              System.Globalization.CultureInfo.InvariantCulture,
+                              out var n) && n >= 0
+            ? n : defaultValue;
+    }
+
+    /// <summary>
+    /// One-liner summary of pasted evidence — kind + title — joined for
+    /// memory storage. We intentionally don't store full evidence content
+    /// here (would bloat the db quickly and isn't needed for the 'have I
+    /// seen this before' use case). The current investigation gets full
+    /// evidence content; the past-investigation card just gets the
+    /// labels.
+    /// </summary>
+    private static string SummariseEvidence(IReadOnlyList<EvidenceItem> evidence)
+    {
+        if (evidence.Count == 0) return "";
+        return string.Join("; ", evidence
+            .Select(e => string.IsNullOrWhiteSpace(e.Title)
+                ? (e.Kind ?? "note")
+                : $"{e.Kind ?? "note"}: {e.Title}"));
     }
 
     // ---- request types ----
@@ -257,7 +392,14 @@ public static class V3Endpoints
         // logs — Mongo documents, OpenSearch query results, Kafka event
         // payloads, or free-form notes. Threaded into the prompt as labelled
         // sections so the LLM can correlate logs with state in other systems.
-        IReadOnlyList<EvidenceItem>? Evidence);
+        IReadOnlyList<EvidenceItem>? Evidence,
+        // Per-request override of the memory feature. Null = follow the
+        // process default (which is on unless V3_MEMORY_DISABLED is set);
+        // false = explicitly skip memory for this analyze; true = explicitly
+        // include even if the env disabled it. Lets the UI A/B without a
+        // restart and lets the harness force memory off for 'no-memory'
+        // configs.
+        bool? UseMemory);
 
     /// <summary>
     /// One piece of supporting evidence pasted in by the user. Kind is one of
