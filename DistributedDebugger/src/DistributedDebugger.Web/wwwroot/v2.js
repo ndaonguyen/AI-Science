@@ -11,6 +11,11 @@ const state = {
   logs: new Map(),
   // Set<key> of rows the user has clicked
   selected: new Set(),
+  // Most recently clicked row key — used as the pivot for shift-click range
+  // selection. Null when the table is fresh or after clear-all. Updated by
+  // every plain (non-shift) click so 'extend the selection from here'
+  // always means 'from the last thing I touched'.
+  lastSelectedKey: null,
   // Array<EvidenceItem> in insertion order. Each item: { id, kind, title, content }.
   // Sent with the Analyze request alongside logs so the LLM can reason
   // about Mongo / OpenSearch / Kafka / Note alongside the log evidence.
@@ -117,6 +122,10 @@ const $evidenceFormCancel   = $('evidenceFormCancel');
   document.getElementById('clearSelectionLink').addEventListener('click', e => {
     e.preventDefault();
     onClearSelection();
+  });
+  document.getElementById('selectAllLink').addEventListener('click', e => {
+    e.preventDefault();
+    selectAll();
   });
 
   // Evidence-add buttons. Each one sets the active kind on state and opens
@@ -330,6 +339,7 @@ async function onAnalyze() {
 function onClear() {
   state.logs.clear();
   state.selected.clear();
+  state.lastSelectedKey = null;
   renderTable();
   refreshSelectedHeader();
   $analysisCard.classList.add('hidden');
@@ -455,6 +465,9 @@ function renderEvidence() {
 
 function onClearSelection() {
   if (state.selected.size === 0) return;
+  // Reset pivot — it might point at a row we're about to deselect anyway,
+  // and an unset pivot is the cleaner state after 'start over'.
+  state.lastSelectedKey = null;
   // Remove the visual selected state from every row without re-rendering
   // the whole table. `Set.clear` first so toggleSelected-style targeted
   // updates can read state.selected as already-empty.
@@ -495,23 +508,41 @@ function mergeLogs(arr) {
 function renderTable() {
   $logCount.textContent = state.logs.size;
   if (state.logs.size === 0) {
-    $logTbody.innerHTML = `<tr class="empty"><td colspan="4">No logs yet — filter to begin.</td></tr>`;
+    $logTbody.innerHTML = `<tr class="empty"><td colspan="5">No logs yet — filter to begin.</td></tr>`;
     updateActionState();
     return;
   }
   // Build via DocumentFragment to avoid layout thrash for big result sets.
+  // Index is 1-based so row 1 is the first log — matches how a human counts
+  // ("the first log") not how a programmer counts ("logs[0]"). Stays stable
+  // across renders because state.logs is sort-stable on timestamp.
   const frag = document.createDocumentFragment();
+  let i = 1;
   for (const [key, log] of state.logs) {
     const tr = document.createElement('tr');
     tr.dataset.key = key;
     if (state.selected.has(key)) tr.classList.add('selected');
     tr.innerHTML =
+      `<td class="col-idx">${i}</td>` +
       `<td class="col-pick">${state.selected.has(key) ? '●' : '○'}</td>` +
       `<td class="col-ts mono">${formatTs(log.timestamp)}</td>` +
       `<td class="col-svc mono">${escapeHtml(log.service)}</td>` +
       `<td class="col-msg mono">${escapeHtml(truncate(extractDisplayMessage(log.message), 480))}</td>`;
-    tr.addEventListener('click', () => toggleSelected(key));
+    // Shift-click → range select from lastSelectedKey to this row. Plain
+    // click → toggle just this row (and update the pivot).
+    tr.addEventListener('click', (ev) => {
+      if (ev.shiftKey && state.lastSelectedKey && state.lastSelectedKey !== key) {
+        ev.preventDefault();
+        // Stop the browser from selecting text between the click points —
+        // shift-click on text content does that by default and it's noisy.
+        window.getSelection()?.removeAllRanges();
+        rangeSelect(state.lastSelectedKey, key);
+      } else {
+        toggleSelected(key);
+      }
+    });
     frag.appendChild(tr);
+    i++;
   }
   $logTbody.innerHTML = '';
   $logTbody.appendChild(frag);
@@ -521,6 +552,9 @@ function renderTable() {
 function toggleSelected(key) {
   if (state.selected.has(key)) state.selected.delete(key);
   else state.selected.add(key);
+  // Pivot moves with every plain click so the next shift-click extends from
+  // wherever the user just touched. Standard file-manager behaviour.
+  state.lastSelectedKey = key;
   // Targeted update — avoids re-rendering the whole table on every click.
   const tr = $logTbody.querySelector(`tr[data-key="${cssEscape(key)}"]`);
   if (tr) {
@@ -531,6 +565,68 @@ function toggleSelected(key) {
   updateActionState();
 }
 
+/// Range select between two row keys (inclusive). Both endpoints AND every
+/// row between them in the current chronological order get marked selected
+/// (NOT toggled — shift-click means 'add this range to my selection', which
+/// matches how every spreadsheet and email client does it). The pivot moves
+/// to the new endpoint so a follow-up shift-click extends from there.
+function rangeSelect(fromKey, toKey) {
+  // Walk state.logs (already sort-stable) and find the index of each
+  // endpoint. Whichever is earlier is the start; whichever is later is the
+  // end. Single pass.
+  const keys = [...state.logs.keys()];
+  const i = keys.indexOf(fromKey);
+  const j = keys.indexOf(toKey);
+  if (i < 0 || j < 0) {
+    // Pivot row was cleared between clicks; fall back to single toggle.
+    toggleSelected(toKey);
+    return;
+  }
+  const [lo, hi] = i <= j ? [i, j] : [j, i];
+  for (let n = lo; n <= hi; n++) {
+    const key = keys[n];
+    if (!state.selected.has(key)) {
+      state.selected.add(key);
+      const tr = $logTbody.querySelector(`tr[data-key="${cssEscape(key)}"]`);
+      if (tr) {
+        tr.classList.add('selected');
+        tr.querySelector('.col-pick').textContent = '●';
+      }
+    }
+  }
+  state.lastSelectedKey = toKey;
+  refreshSelectedHeader();
+  updateActionState();
+}
+
+/// Select every row currently in state.logs. Triggered by the 'Select all'
+/// link in the Logs card header. No-op if everything is already selected
+/// (the link auto-hides in that case via refreshSelectedHeader).
+function selectAll() {
+  let changed = false;
+  for (const key of state.logs.keys()) {
+    if (!state.selected.has(key)) {
+      state.selected.add(key);
+      const tr = $logTbody.querySelector(`tr[data-key="${cssEscape(key)}"]`);
+      if (tr) {
+        tr.classList.add('selected');
+        tr.querySelector('.col-pick').textContent = '●';
+      }
+      changed = true;
+    }
+  }
+  if (changed) {
+    // Pivot to the LAST log so a shift-click after select-all extends
+    // backward from the bottom — which matches what a user expects after
+    // 'select all then de-select these last few'.
+    const keys = [...state.logs.keys()];
+    state.lastSelectedKey = keys[keys.length - 1];
+    refreshSelectedHeader();
+    updateActionState();
+    setStatus(`Selected all ${state.logs.size} logs.`, 'info');
+  }
+}
+
 /// Update the 'Selected (N)' heading and toggle the Clear-selection link
 /// visibility based on the current selected set. Centralised because three
 /// different code paths (toggle, clear-selection, clear-all) need to keep
@@ -538,8 +634,16 @@ function toggleSelected(key) {
 function refreshSelectedHeader() {
   const heading = document.getElementById('selectedHeading');
   if (heading) heading.textContent = `Selected (${state.selected.size})`;
-  const link = document.getElementById('clearSelectionLink');
-  if (link) link.classList.toggle('hidden', state.selected.size === 0);
+  const clearLink = document.getElementById('clearSelectionLink');
+  if (clearLink) clearLink.classList.toggle('hidden', state.selected.size === 0);
+  // Hide 'Select all' once everything is already selected — clicking it
+  // would be a no-op and the visual clutter isn't worth it. Also hide when
+  // there are no logs to select (initial empty state).
+  const allLink = document.getElementById('selectAllLink');
+  if (allLink) {
+    const allSelected = state.logs.size > 0 && state.selected.size === state.logs.size;
+    allLink.classList.toggle('hidden', state.logs.size === 0 || allSelected);
+  }
 }
 
 function updateActionState() {

@@ -220,6 +220,20 @@ button.small { width: auto; font-size: 11px; padding: 4px 10px; }
    the remaining 50%. Percentages with table-layout:fixed are honoured
    exactly, which avoids the "auto-shrink to content" behaviour that
    was collapsing the message column to a 3-char gutter. */
+/* Index column — 1-based row number, stable across selection state.
+   Right-aligned and a touch dimmer than the message text so it reads as
+   a counter rather than as content. user-select: none keeps the numbers
+   out of clipboard when the user copies log text. */
+.log-table .col-idx {
+  width: 5%;
+  text-align: right;
+  padding-right: 8px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
 .log-table .col-pick {
   width: 4%;
   text-align: center;
