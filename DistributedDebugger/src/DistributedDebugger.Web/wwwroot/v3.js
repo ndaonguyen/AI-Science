@@ -127,6 +127,34 @@ const $evidenceFormCancel   = $('evidenceFormCancel');
     e.preventDefault();
     selectAll();
   });
+  // Range-select control: two number inputs + Select button. The button
+  // is disabled until both inputs parse to positive integers — keeps
+  // accidental clicks on an empty form from doing anything weird.
+  const $rangeFrom = document.getElementById('rangeFrom');
+  const $rangeTo   = document.getElementById('rangeTo');
+  const $rangeBtn  = document.getElementById('rangeSelectBtn');
+  function refreshRangeBtnEnabled() {
+    const f = parseInt($rangeFrom.value, 10);
+    const t = parseInt($rangeTo.value, 10);
+    $rangeBtn.disabled = !(Number.isFinite(f) && f >= 1 && Number.isFinite(t) && t >= 1);
+  }
+  $rangeFrom.addEventListener('input', refreshRangeBtnEnabled);
+  $rangeTo.addEventListener('input',   refreshRangeBtnEnabled);
+  // Enter in either input fires the button — saves a tab + click. Only when
+  // the button is enabled, of course (otherwise we'd run with NaN inputs).
+  function rangeEnterHandler(ev) {
+    if (ev.key === 'Enter' && !$rangeBtn.disabled) {
+      ev.preventDefault();
+      $rangeBtn.click();
+    }
+  }
+  $rangeFrom.addEventListener('keydown', rangeEnterHandler);
+  $rangeTo.addEventListener('keydown',   rangeEnterHandler);
+  $rangeBtn.addEventListener('click', () => {
+    const f = parseInt($rangeFrom.value, 10);
+    const t = parseInt($rangeTo.value, 10);
+    selectByIndexRange(f, t);
+  });
 
   // Evidence-add buttons. Each one sets the active kind on state and opens
   // the form with the appropriate heading. We don't have separate forms
@@ -635,6 +663,60 @@ function rangeSelect(fromKey, toKey) {
   updateActionState();
 }
 
+/// Select rows by 1-based index range (inclusive on both ends). The from
+/// and to numbers correspond to the '#' column in the table — what a human
+/// would call 'log 5' through 'log 12'. The actual row keys are derived
+/// from state.logs (the Map preserves insertion order, which is the same
+/// order renderTable iterates), so the index-to-key translation is just
+/// the position in [...state.logs.keys()].
+///
+/// Edge handling:
+///   - Reversed range (to < from): swapped silently. 'Select 20 to 5'
+///     and 'Select 5 to 20' do the same thing.
+///   - Out-of-range: clamped to [1, state.logs.size]. Asking for
+///     '1 to 9999' with only 240 logs selects 1-240. Friendlier than
+///     erroring.
+///   - Both endpoints out-of-range with no overlap (e.g. 'from=500
+///     to=600' on a 240-row table): nothing gets selected, status hint
+///     explains why.
+///   - Empty table: button is hidden via refreshSelectedHeader so this
+///     shouldn't fire, but defensive guard anyway.
+///
+/// Behaves additively — adds to whatever's already selected, doesn't
+/// replace. Same model as Select-all and shift-click. If the user wants
+/// a clean range, they Clear-selection first.
+function selectByIndexRange(fromIdx, toIdx) {
+  const total = state.logs.size;
+  if (total === 0) return;
+
+  // Swap so lo <= hi.
+  let lo = Math.min(fromIdx, toIdx);
+  let hi = Math.max(fromIdx, toIdx);
+
+  // Clamp to the visible range. A request for '500-600' on a 240-row
+  // table becomes [240, 240] which the no-overlap check below catches.
+  lo = Math.max(1, Math.min(lo, total));
+  hi = Math.max(1, Math.min(hi, total));
+
+  if (hi < lo || lo > total) {
+    setStatus(`Range ${fromIdx}-${toIdx} is outside the table (1-${total}).`, 'error');
+    return;
+  }
+
+  // Translate 1-based index → key. state.logs is the same iteration order
+  // renderTable uses, so index 1 is the first key, etc.
+  const keys = [...state.logs.keys()];
+  const fromKey = keys[lo - 1];
+  const toKey   = keys[hi - 1];
+
+  // Reuse the existing range-select machinery; it already knows how to
+  // walk between two keys, mark them all selected, and update the pivot
+  // and DOM. Single source of truth for 'select a contiguous range'.
+  rangeSelect(fromKey, toKey);
+
+  setStatus(`Selected logs ${lo}-${hi}.`, 'info');
+}
+
 /// Select every row currently in state.logs. Triggered by the 'Select all'
 /// link in the Logs card header. No-op if everything is already selected
 /// (the link auto-hides in that case via refreshSelectedHeader).
@@ -680,6 +762,11 @@ function refreshSelectedHeader() {
     const allSelected = state.logs.size > 0 && state.selected.size === state.logs.size;
     allLink.classList.toggle('hidden', state.logs.size === 0 || allSelected);
   }
+  // Range-select inputs only make sense with logs in the table. Toggling
+  // visibility on the whole group keeps the header clean during the empty
+  // state — same pattern as the links above.
+  const rangeGroup = document.getElementById('rangeSelectGroup');
+  if (rangeGroup) rangeGroup.classList.toggle('hidden', state.logs.size === 0);
 }
 
 function updateActionState() {
