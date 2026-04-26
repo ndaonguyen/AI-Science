@@ -146,7 +146,14 @@ public static class V2Endpoints
 
                 var analyzer = new LogAnalyzer(openaiKey);
                 var result = await analyzer.AnalyzeAsync(
-                    req.Description, req.TicketId, req.Logs, ct);
+                    req.Description, req.TicketId, req.Logs,
+                    // Filter out empty entries up-front so the analyzer
+                    // doesn't have to deal with whitespace-only sections
+                    // in its prompt.
+                    (req.Evidence ?? Array.Empty<EvidenceItem>())
+                        .Where(e => !string.IsNullOrWhiteSpace(e.Content))
+                        .ToList(),
+                    ct);
                 return Results.Ok(result);
             }
             catch (Exception ex)
@@ -177,7 +184,24 @@ public static class V2Endpoints
     public sealed record AnalyzeRequest(
         string? Description,
         string? TicketId,
-        IReadOnlyList<LogRecord>? Logs);
+        IReadOnlyList<LogRecord>? Logs,
+        // Optional supporting evidence the user has gathered alongside the
+        // logs — Mongo documents, OpenSearch query results, Kafka event
+        // payloads, or free-form notes. Threaded into the prompt as labelled
+        // sections so the LLM can correlate logs with state in other systems.
+        IReadOnlyList<EvidenceItem>? Evidence);
+
+    /// <summary>
+    /// One piece of supporting evidence pasted in by the user. Kind is one of
+    /// "mongo" / "opensearch" / "kafka" / "note" — used to label the section
+    /// in the prompt and pick the right wording. Title is short context the
+    /// user provides ("activities collection — _id act-789"), Content is the
+    /// raw payload they pasted (a JSON document, a query hit, an event body).
+    /// </summary>
+    public sealed record EvidenceItem(
+        string? Kind,
+        string? Title,
+        string? Content);
 
     // ---- helpers ----
 

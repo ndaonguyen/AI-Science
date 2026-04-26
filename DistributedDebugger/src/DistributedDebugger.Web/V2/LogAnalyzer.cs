@@ -30,6 +30,7 @@ public sealed class LogAnalyzer
         string bugDescription,
         string? ticketId,
         IReadOnlyList<LogRecord> logs,
+        IReadOnlyList<V2Endpoints.EvidenceItem> evidence,
         CancellationToken ct)
     {
         if (logs.Count == 0)
@@ -43,19 +44,27 @@ public sealed class LogAnalyzer
                 OutputTokens: 0);
         }
 
+        // System prompt acknowledges the possibility of supporting evidence
+        // alongside logs. When the user has pasted Mongo / OpenSearch / Kafka
+        // payloads, we want the model to actively cross-reference (e.g. 'the
+        // log says X but the Mongo doc shows Y') rather than treating each
+        // input in isolation.
         var systemPrompt =
             "You are a senior backend engineer analysing CloudWatch logs from a " +
             "distributed microservice system (CoCo at Education Perfect: MongoDB, " +
             "OpenSearch, Kafka, ECS). The user has already filtered the logs down " +
-            "to a specific set they want analysed. Read every log line. Look for " +
-            "exceptions, stack traces, error/warn lines, timeouts, connection " +
-            "failures, null references, retries, and any behaviour that doesn't " +
-            "match what the bug description says should be happening. Quote actual " +
-            "log lines as evidence — never invent details that aren't in the input. " +
-            "If the logs don't show a clear cause, say so honestly and suggest what " +
-            "to investigate next (Mongo? OpenSearch? Kafka? other services?).";
+            "to a specific set they want analysed, and may have pasted supporting " +
+            "evidence from MongoDB, OpenSearch, Kafka, or other sources. " +
+            "Read every log line. Look for exceptions, stack traces, error/warn " +
+            "lines, timeouts, connection failures, null references, retries, and " +
+            "any behaviour inconsistent with the bug description. When evidence is " +
+            "provided, cross-reference it against the logs (e.g. 'the log claims X " +
+            "but the Mongo document shows Y'). Quote actual log lines and evidence " +
+            "snippets as support — never invent details that aren't in the input. " +
+            "If the cause still isn't clear, say so honestly and suggest what to " +
+            "investigate next (Mongo? OpenSearch? Kafka? other services?).";
 
-        var userPrompt = BuildUserPrompt(bugDescription, ticketId, logs);
+        var userPrompt = BuildUserPrompt(bugDescription, ticketId, logs, evidence);
 
         var client = new ChatClient(model: _model, apiKey: _apiKey);
         var options = new ChatCompletionOptions
@@ -90,7 +99,10 @@ public sealed class LogAnalyzer
     }
 
     private static string BuildUserPrompt(
-        string bug, string? ticket, IReadOnlyList<LogRecord> logs)
+        string bug,
+        string? ticket,
+        IReadOnlyList<LogRecord> logs,
+        IReadOnlyList<V2Endpoints.EvidenceItem> evidence)
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("## Bug context");
@@ -107,10 +119,39 @@ public sealed class LogAnalyzer
             sb.AppendLine(TruncateForPrompt(l.Message));
         }
         sb.AppendLine();
+
+        // Evidence section — only emitted if the user actually pasted
+        // something. Each item is labelled with its kind (Mongo / OpenSearch /
+        // Kafka / Note) and the title the user typed, followed by the raw
+        // payload they pasted. Big payloads get the same per-item truncation
+        // as logs so one fat document can't blow the context budget.
+        if (evidence is { Count: > 0 })
+        {
+            sb.AppendLine($"## Supporting evidence ({evidence.Count} item{(evidence.Count == 1 ? "" : "s")})");
+            sb.AppendLine();
+            foreach (var item in evidence)
+            {
+                var label = (item.Kind ?? "note").ToLowerInvariant() switch
+                {
+                    "mongo"      => "Mongo document",
+                    "opensearch" => "OpenSearch result",
+                    "kafka"      => "Kafka event",
+                    _            => "Note",
+                };
+                sb.Append("### ").Append(label);
+                if (!string.IsNullOrWhiteSpace(item.Title)) sb.Append(" — ").Append(item.Title);
+                sb.AppendLine();
+                sb.AppendLine("```");
+                sb.AppendLine(TruncateForPrompt(item.Content ?? ""));
+                sb.AppendLine("```");
+                sb.AppendLine();
+            }
+        }
+
         sb.AppendLine("## Output schema (return JSON object only)");
         sb.AppendLine("{");
         sb.AppendLine("  \"summary\": string,                    // 1-2 sentence answer to 'what's going on'");
-        sb.AppendLine("  \"suspicious\": [string, ...],          // exact log lines that stand out (quote them)");
+        sb.AppendLine("  \"suspicious\": [string, ...],          // exact log lines or evidence snippets that stand out (quote them)");
         sb.AppendLine("  \"hypothesis\": string,                 // best theory — say 'unclear' if it's unclear");
         sb.AppendLine("  \"suggestedFollowups\": [string, ...]   // 0-3 next things to check (Mongo doc? OpenSearch index? other service's logs?)");
         sb.AppendLine("}");

@@ -8,7 +8,7 @@
        the URL distinct from the cached version regardless of HTTP cache
        headers. Saves having to fight browser DevTools. -->
   <link rel="stylesheet" href="styles.css?v=2">
-  <link rel="stylesheet" href="v2.css?v=9">
+  <link rel="stylesheet" href="v2.css?v=10">
 </head>
 <body>
   <header class="topbar">
@@ -130,6 +130,52 @@
         </div>
       </div>
 
+      <div class="card">
+        <div class="card-header">
+          <div class="logs-title-row">
+            <h2>Evidence (<span id="evidenceCount">0</span>)</h2>
+          </div>
+        </div>
+        <p class="hint">
+          Paste supporting evidence to analyze alongside the logs — Mongo
+          documents, OpenSearch results, Kafka events, or free-form notes.
+        </p>
+        <div class="evidence-buttons">
+          <button type="button" class="secondary small" data-evidence-kind="mongo">
+            + Mongo doc
+          </button>
+          <button type="button" class="secondary small" data-evidence-kind="opensearch">
+            + OpenSearch result
+          </button>
+          <button type="button" class="secondary small" data-evidence-kind="kafka">
+            + Kafka event
+          </button>
+          <button type="button" class="secondary small" data-evidence-kind="note">
+            + Note
+          </button>
+        </div>
+
+        <!-- Hidden form revealed when one of the buttons above is clicked.
+             Same form for all kinds — only the heading changes. -->
+        <div id="evidenceForm" class="evidence-form hidden">
+          <h3 id="evidenceFormHeading">Add evidence</h3>
+          <label>Title (short context)
+            <input type="text" id="evidenceFormTitle"
+                   placeholder="e.g. ComponentBlockModel — _id 67abcd">
+          </label>
+          <label>Content (paste here)
+            <textarea id="evidenceFormContent" rows="8"
+                      placeholder="Paste the JSON / payload / event body here"></textarea>
+          </label>
+          <div class="evidence-form-actions">
+            <button type="button" id="evidenceFormSave" class="primary">Save</button>
+            <button type="button" id="evidenceFormCancel" class="secondary">Cancel</button>
+          </div>
+        </div>
+
+        <div id="evidenceList" class="evidence-list"></div>
+      </div>
+
       <div id="analysisCard" class="card hidden">
         <div class="card-header">
           <h2>Analysis</h2>
@@ -140,6 +186,6 @@
     </section>
   </main>
 
-  <script src="v2.js?v=8"></script>
+  <script src="v2.js?v=10"></script>
 </body>
 </html>

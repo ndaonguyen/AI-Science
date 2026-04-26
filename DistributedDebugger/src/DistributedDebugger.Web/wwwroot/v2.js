@@ -11,6 +11,13 @@ const state = {
   logs: new Map(),
   // Set<key> of rows the user has clicked
   selected: new Set(),
+  // Array<EvidenceItem> in insertion order. Each item: { id, kind, title, content }.
+  // Sent with the Analyze request alongside logs so the LLM can reason
+  // about Mongo / OpenSearch / Kafka / Note alongside the log evidence.
+  evidence: [],
+  // What kind of evidence the form is currently editing. Null when the
+  // form is closed. Set when a 'Add' button is clicked.
+  evidenceFormKind: null,
 };
 
 // Service list mirrors the V1 ServiceLogGroupResolver.KnownServices. Keep
@@ -49,6 +56,15 @@ const $status         = $('status');
 const $analysisCard   = $('analysisCard');
 const $analysisBody   = $('analysisBody');
 const $analysisCost   = $('analysisCost');
+
+const $evidenceCount        = $('evidenceCount');
+const $evidenceList         = $('evidenceList');
+const $evidenceForm         = $('evidenceForm');
+const $evidenceFormHeading  = $('evidenceFormHeading');
+const $evidenceFormTitle    = $('evidenceFormTitle');
+const $evidenceFormContent  = $('evidenceFormContent');
+const $evidenceFormSave     = $('evidenceFormSave');
+const $evidenceFormCancel   = $('evidenceFormCancel');
 
 // ---- init ----
 (function init() {
@@ -91,7 +107,7 @@ const $analysisCost   = $('analysisCost');
   $analyzeBtn.addEventListener('click', onAnalyze);
   $clearBtn.addEventListener('click', onClear);
 
-  // 'Clear selection' link in the Selected-card header. Only deselects
+  // 'Clear selection' link in the Logs card header. Only deselects
   // rows; the gathered log set is unaffected. Keeps the user in flow when
   // they want to start a fresh extension pivot without losing the logs
   // they've already gathered.
@@ -99,6 +115,14 @@ const $analysisCost   = $('analysisCost');
     e.preventDefault();
     onClearSelection();
   });
+
+  // Evidence-add buttons. Each one sets the active kind on state and opens
+  // the form with the appropriate heading. We don't have separate forms
+  // per kind because the inputs are identical — only the label changes.
+  document.querySelectorAll('[data-evidence-kind]').forEach(b =>
+    b.addEventListener('click', () => openEvidenceForm(b.dataset.evidenceKind)));
+  $evidenceFormSave.addEventListener('click', saveEvidenceFromForm);
+  $evidenceFormCancel.addEventListener('click', closeEvidenceForm);
 })();
 
 // ---- helpers ----
@@ -275,6 +299,9 @@ async function onAnalyze() {
         description,
         ticketId: $('ticketId').value || null,
         logs: logsToAnalyze,
+        // Strip the local id field — the server doesn't need or expect it.
+        evidence: state.evidence.map(({ kind, title, content }) =>
+          ({ kind, title, content })),
       }),
     });
     const data = await safeJson(res);
@@ -297,6 +324,89 @@ function onClear() {
   refreshSelectedHeader();
   $analysisCard.classList.add('hidden');
   setStatus('Cleared.', 'info');
+}
+
+// ---- evidence ----
+
+const EVIDENCE_LABELS = {
+  mongo:      'Mongo document',
+  opensearch: 'OpenSearch result',
+  kafka:      'Kafka event',
+  note:       'Note',
+};
+
+const EVIDENCE_PLACEHOLDERS = {
+  mongo:      'e.g. ComponentBlockModel — _id 67abcd',
+  opensearch: 'e.g. activities index — query {match_all}',
+  kafka:      'e.g. content-indexed topic — partition 3 offset 12345',
+  note:       'e.g. observed in production around 09:09 UTC',
+};
+
+function openEvidenceForm(kind) {
+  state.evidenceFormKind = kind;
+  $evidenceFormHeading.textContent = `Add ${EVIDENCE_LABELS[kind] ?? 'evidence'}`;
+  $evidenceFormTitle.value = '';
+  $evidenceFormTitle.placeholder = EVIDENCE_PLACEHOLDERS[kind] ?? '';
+  $evidenceFormContent.value = '';
+  $evidenceForm.classList.remove('hidden');
+  // Auto-focus title so the user can start typing immediately.
+  $evidenceFormTitle.focus();
+}
+
+function closeEvidenceForm() {
+  state.evidenceFormKind = null;
+  $evidenceForm.classList.add('hidden');
+}
+
+function saveEvidenceFromForm() {
+  const kind = state.evidenceFormKind ?? 'note';
+  const content = $evidenceFormContent.value.trim();
+  const title = $evidenceFormTitle.value.trim();
+  if (!content) {
+    setStatus('Evidence content is required.', 'error');
+    return;
+  }
+  state.evidence.push({
+    // Random ID — collision-free enough for an in-memory list a human is
+    // managing by hand. Used as the dataset key for delete-button wiring.
+    id: `ev-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    kind,
+    title,
+    content,
+  });
+  closeEvidenceForm();
+  renderEvidence();
+  setStatus(`Added ${EVIDENCE_LABELS[kind] ?? 'evidence'}.`, 'success');
+}
+
+function deleteEvidence(id) {
+  state.evidence = state.evidence.filter(e => e.id !== id);
+  renderEvidence();
+}
+
+function renderEvidence() {
+  $evidenceCount.textContent = state.evidence.length;
+  $evidenceList.innerHTML = '';
+  if (state.evidence.length === 0) return;
+
+  const frag = document.createDocumentFragment();
+  for (const item of state.evidence) {
+    const card = document.createElement('div');
+    card.className = `evidence-card evidence-${item.kind}`;
+    card.innerHTML =
+      `<div class="evidence-card-header">` +
+        `<span class="evidence-kind">${escapeHtml(EVIDENCE_LABELS[item.kind] ?? item.kind)}</span>` +
+        (item.title ? `<span class="evidence-title">${escapeHtml(item.title)}</span>` : '') +
+        `<button type="button" class="evidence-delete" data-id="${escapeHtml(item.id)}" title="Remove this evidence">✕</button>` +
+      `</div>` +
+      `<pre class="evidence-content mono">${escapeHtml(truncate(item.content, 1500))}</pre>`;
+    frag.appendChild(card);
+  }
+  $evidenceList.appendChild(frag);
+
+  // Wire delete buttons after the DOM update so the data-id matches.
+  $evidenceList.querySelectorAll('.evidence-delete').forEach(b =>
+    b.addEventListener('click', () => deleteEvidence(b.dataset.id)));
 }
 
 function onClearSelection() {
