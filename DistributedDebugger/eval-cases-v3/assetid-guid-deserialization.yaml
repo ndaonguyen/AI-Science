@@ -1,0 +1,83 @@
+# V3 eval case: ImageComponentModel.AssetId null causes Guid deserialization failure.
+#
+# Real bug we've been debugging together: a block document in the authoring-service
+# 'blocks' collection contains a ComponentBlockModel whose components include an
+# ImageComponentModel with assetId: null. The Mongo driver tries to deserialize
+# that field as a non-nullable Guid (per the C# model) and throws
+# FormatException — surfaces as 'Unexpected Execution Error' to the user.
+#
+# Truth criteria below force a correct answer to mention assetId, ImageComponentModel,
+# and 'non-nullable'. A pass-grade analysis cannot blame network, auth, or perms.
+
+id: assetid-guid-deserialization
+description: |
+  Users see "Unexpected Execution Error" when rendering some activities.
+  Affects authoring-service. The error appears at /contentRenderingActivity/blocks
+  and seems to be tied to specific blocks but the pattern isn't obvious yet.
+ticketId: COCO-689
+
+logs:
+  - timestamp: 2026-04-22T01:50:15.161Z
+    service: authoring-service
+    logGroup: /aws/ecs/authoring-service
+    message: "Unexpected Execution Error at /contentRenderingActivity/blocks"
+  - timestamp: 2026-04-22T01:50:15.358Z
+    service: authoring-service
+    logGroup: /aws/ecs/authoring-service
+    message: |
+      fail: EP.Common.HotChocolate.LoggingExecutionDiagnosticEventListener[0]
+      System.FormatException: An error occurred while deserializing the Components property of class
+      AuthoringService.Infrastructure.Models.ComponentBlockModel: An error occurred while deserializing
+      the AssetId property of class AuthoringService.Infrastructure.Models.Components.ImageComponentModel:
+      Cannot deserialize a 'Guid' from BsonType 'Null'.
+  - timestamp: 2026-04-22T01:50:15.359Z
+    service: authoring-service
+    logGroup: /aws/ecs/authoring-service
+    message: |
+      at MongoDB.Bson.Serialization.IBsonSerializerExtensions.Deserialize(IBsonSerializer serializer, BsonDeserializationContext context)
+  - timestamp: 2026-04-22T01:50:15.359Z
+    service: authoring-service
+    logGroup: /aws/ecs/authoring-service
+    message: |
+      at MongoDB.Bson.Serialization.Serializers.SerializerBase`1.MongoDB.Bson.Serialization.IBsonSerializer.Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
+
+evidence:
+  - kind: mongo
+    title: "ComponentBlockModel — _id 67abcd"
+    command: db.blocks.findOne({_id: UUID('67abcd00-0000-0000-0000-000000000000')})
+    content: |
+      {
+        "_id": UUID("67abcd00-0000-0000-0000-000000000000"),
+        "_t": "ComponentBlockModel",
+        "title": "Sample image block",
+        "state": "Published",
+        "isLatest": true,
+        "components": [
+          {
+            "_id": UUID("89ef0000-0000-0000-0000-000000000000"),
+            "_t": "ImageComponentModel",
+            "type": "Image",
+            "controlType": "Image",
+            "order": 0,
+            "assetId": null
+          }
+        ]
+      }
+
+truth:
+  expectedCause: |
+    ImageComponentModel.AssetId is declared as a non-nullable Guid in the C# model
+    but the document stored in MongoDB has assetId: null. The Bson deserializer
+    cannot map BsonType.Null onto a non-nullable Guid and throws FormatException.
+  expectedServices:
+    - authoring-service
+  mustMention:
+    - assetId
+    - ImageComponentModel
+    - non-nullable
+  mustNotClaim:
+    - network
+    - authentication
+    - permission
+    - timeout
+  minConfidence: Medium
