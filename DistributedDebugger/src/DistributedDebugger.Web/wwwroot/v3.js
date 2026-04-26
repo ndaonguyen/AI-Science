@@ -293,10 +293,13 @@ async function onAnalyze() {
   if (!description) { setStatus('Add a bug description first.', 'error'); return; }
   if (state.logs.size === 0) { setStatus('Fetch some logs first.', 'error'); return; }
 
-  // Send ALL gathered logs to the analyzer. Selection is for Extend
-  // (pivot rows), not for narrowing analysis — the user gathers a
-  // curated set via filter+extend, then analyzes that whole set.
-  const logsToAnalyze = Array.from(state.logs.values());
+  // Send the user-selected subset when a selection exists; otherwise
+  // send the whole gathered table. Selection has two roles in this UI —
+  // 'pivots for Extend' AND 'rows to analyse' — and selection-narrowing
+  // for Analyze is opt-in: if you don't pick anything, you get the
+  // original whole-table behaviour. analyzeTargets() encapsulates the
+  // decision so the button label and the request payload can't drift.
+  const logsToAnalyze = analyzeTargets();
 
   $analyzeBtn.disabled = true;
   setStatus(`Analyzing ${logsToAnalyze.length} log${logsToAnalyze.length === 1 ? '' : 's'}…`, 'info');
@@ -682,10 +685,44 @@ function refreshSelectedHeader() {
 function updateActionState() {
   $extendBtn.disabled = state.selected.size === 0;
   $analyzeBtn.disabled = state.logs.size === 0;
-  // Button label simply reflects how many logs will be analyzed.
-  $analyzeBtn.textContent = state.logs.size === 0
-    ? 'Analyze gathered logs'
-    : `Analyze ${state.logs.size} log${state.logs.size === 1 ? '' : 's'}`;
+  // Button label reflects what onAnalyze will actually send. Mirror the
+  // logic in analyzeTargets() so the user can tell at a glance whether
+  // selection is going to narrow the analysis or not.
+  //   - empty table          → "Analyze gathered logs" (disabled state)
+  //   - selection present    → "Analyze N selected"  (selection narrows input)
+  //   - no selection         → "Analyze all M logs"  (whole table goes in)
+  if (state.logs.size === 0) {
+    $analyzeBtn.textContent = 'Analyze gathered logs';
+  } else if (state.selected.size > 0) {
+    const n = state.selected.size;
+    $analyzeBtn.textContent = `Analyze ${n} selected`;
+  } else {
+    const m = state.logs.size;
+    $analyzeBtn.textContent = `Analyze all ${m} log${m === 1 ? '' : 's'}`;
+  }
+}
+
+/// What the Analyze action should actually send to the server.
+/// Selection wins when present — that's the user explicitly narrowing.
+/// When nothing is selected we fall back to the whole gathered table,
+/// which preserves the original 'gather then analyze the lot' workflow.
+/// Selected-but-orphaned keys (the row was removed by Clear or filter
+/// before Analyze fired) are silently skipped — same defensive pattern
+/// as the rest of the file.
+function analyzeTargets() {
+  if (state.selected.size === 0) {
+    return Array.from(state.logs.values());
+  }
+  const out = [];
+  for (const key of state.selected) {
+    const log = state.logs.get(key);
+    if (log) out.push(log);
+  }
+  // Sort chronologically so the LLM reads events in time order regardless
+  // of the order the user clicked rows. Matches what state.logs does
+  // already for the unfiltered case.
+  out.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  return out;
 }
 
 // ---- analysis render ----
