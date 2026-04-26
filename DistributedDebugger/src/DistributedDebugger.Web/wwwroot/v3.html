@@ -8,7 +8,7 @@
        the URL distinct from the cached version regardless of HTTP cache
        headers. Saves having to fight browser DevTools. -->
   <link rel="stylesheet" href="styles.css?v=2">
-  <link rel="stylesheet" href="v3.css?v=2">
+  <link rel="stylesheet" href="v3.css?v=3">
 </head>
 <body>
   <header class="topbar">
@@ -108,9 +108,8 @@
         <div class="card-header">
           <div class="logs-title-row">
             <h2>Logs (<span id="logCount">0</span>)</h2>
-            <a href="#" id="clearSelectionLink" class="hint-link hidden">
-              Clear selection
-            </a>
+            <a href="#" id="selectAllLink"      class="hint-link">Select all</a>
+            <a href="#" id="clearSelectionLink" class="hint-link hidden">Clear selection</a>
           </div>
           <span id="enforcedFilter" class="hint mono"></span>
         </div>
@@ -120,13 +119,15 @@
                  in HTML. Belt-and-braces with the CSS percentage rules in
                  case any future CSS change overrides them. Sums to 100%. -->
             <colgroup>
+              <col style="width: 5%">
               <col style="width: 4%">
-              <col style="width: 22%">
-              <col style="width: 14%">
-              <col style="width: 60%">
+              <col style="width: 21%">
+              <col style="width: 13%">
+              <col style="width: 57%">
             </colgroup>
             <thead>
               <tr>
+                <th class="col-idx">#</th>
                 <th class="col-pick"></th>
                 <th class="col-ts">Timestamp (UTC)</th>
                 <th class="col-svc">Service</th>
@@ -134,7 +135,7 @@
               </tr>
             </thead>
             <tbody id="logTbody">
-              <tr class="empty"><td colspan="4">No logs yet — filter to begin.</td></tr>
+              <tr class="empty"><td colspan="5">No logs yet — filter to begin.</td></tr>
             </tbody>
           </table>
         </div>
@@ -202,6 +203,6 @@
     </section>
   </main>
 
-  <script src="v3.js?v=2"></script>
+  <script src="v3.js?v=3"></script>
 </body>
 </html>
