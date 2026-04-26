@@ -1,0 +1,401 @@
+/* V2 layout — minimal additions on top of styles.css. */
+
+/* styles.css (V1) constrains body to max-width: 980px and centres it.
+   That works for V1's chat-style UI but wastes ~70% of a wide monitor
+   on V2 where the log table needs all the horizontal real estate it
+   can get. Since v2.html only loads styles.css for shared components,
+   override the body here. Limit to a sensible cap (1800px) so the
+   layout doesn't sprawl awkwardly on ultrawide displays. */
+body {
+  max-width: 1800px;
+  width: 92%;
+  padding: 16px 0;
+}
+
+.version-tag {
+  font-size: 11px;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.topbar-right { display: flex; gap: 12px; align-items: center; }
+.topbar-link {
+  font-size: 12px;
+  color: #6c7086;
+  text-decoration: none;
+}
+.topbar-link:hover { color: var(--fg); }
+
+.v2-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  padding: 16px;
+  /* Don't constrain to the viewport — let the right pane stretch as
+     far as the page is wide. Long log messages benefit from horizontal
+     real-estate, and the page already scrolls vertically anyway. */
+  max-width: none;
+}
+@media (max-width: 900px) {
+  .v2-layout { grid-template-columns: 1fr; }
+}
+
+.v2-side { display: flex; flex-direction: column; gap: 12px; }
+.v2-main  { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+.card h2 { margin: 0 0 10px; font-size: 14px; color: var(--muted); }
+.card-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.card-header h2 { margin: 0; }
+
+.card label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.card label > input,
+.card label > textarea,
+.card label > select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+.checkbox-item {
+  display: flex !important;
+  align-items: center;
+  gap: 4px;
+  margin: 0 !important;
+  cursor: pointer;
+}
+.checkbox-item input { width: auto !important; }
+
+/* Time picker inputs stack vertically so a wide datetime-local widget
+   never gets pushed outside the card. The arrow becomes a small label
+   between them. Looks tidier and works on any sidebar width. */
+.time-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.time-row input { width: 100%; }
+.time-row .arrow {
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  margin: 0;
+}
+.quick-ranges { display: flex; gap: 4px; margin-top: 4px; }
+.chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.chip:hover { background: var(--bg); }
+/* The currently-chosen extend window chip. We only set this state on the
+   extend chips (not the time-range chips, where every click sets a fresh
+   value and there's no persistent 'active' selection to convey). */
+.chip.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+/* Title row inside the Logs card header: 'Logs (N)' next to an optional
+   'Clear selection' link. The link auto-hides when nothing is selected.
+   This row sits on the left of the .card-header flex; #enforcedFilter
+   (the 'filterPattern: ...' chip) stays on the right, where it was. */
+.logs-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+.logs-title-row h2 { margin: 0; }
+
+.hint-link {
+  font-size: 11px;
+  color: #2563eb;
+  text-decoration: none;
+}
+.hint-link:hover { text-decoration: underline; }
+.hint-link.hidden { display: none; }
+
+.extend-presets {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  margin-bottom: 6px;
+}
+.extend-custom {
+  width: 100%;
+  font-size: 12px;
+}
+
+.action-row {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 8px;
+}
+.action-row label { flex: 1; margin: 0; }
+
+button.primary, button.secondary { width: 100%; margin-bottom: 6px; }
+button.small { width: auto; font-size: 11px; padding: 4px 10px; }
+
+.status {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.status.info    { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+.status.success { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.status.error   { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+/* Log table — distinct from V1's styling so the difference is obvious */
+.logs-scroll {
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+/* Table layout: fixed widths on the helper columns let the message column
+   take all remaining space. Without table-layout: fixed, the browser
+   auto-distributes width based on content — and a fat JSON message
+   collapsed every other column to nothing in our screenshot. */
+.log-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+}
+.log-table thead th {
+  position: sticky;
+  top: 0;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  text-align: left;
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  border-bottom: 1px solid var(--border);
+}
+.log-table tbody tr {
+  cursor: pointer;
+  border-bottom: 1px solid #e2e8f0;
+}
+.log-table tbody tr:hover    { background: #f8fafc; }
+.log-table tbody tr.selected { background: #dbeafe; }
+.log-table tbody tr.selected:hover { background: #bfdbfe; }
+.log-table tbody tr.empty { cursor: default; color: var(--muted); }
+.log-table tbody tr.empty:hover { background: transparent; }
+.log-table td {
+  padding: 8px 10px;
+  vertical-align: top;
+}
+/* Explicit percentage widths — message gets 50%, the other three split
+   the remaining 50%. Percentages with table-layout:fixed are honoured
+   exactly, which avoids the "auto-shrink to content" behaviour that
+   was collapsing the message column to a 3-char gutter. */
+.log-table .col-pick {
+  width: 4%;
+  text-align: center;
+  color: #2563eb;
+  font-size: 14px;
+  user-select: none;
+}
+.log-table .col-ts {
+  width: 22%;
+  color: #475569;
+  white-space: nowrap;
+  /* Padding-right gives a comfortable gap before the SERVICE column —
+     stops the timestamp text running into the service name. */
+  padding-right: 16px;
+}
+.log-table .col-svc {
+  width: 14%;
+  color: #b45309;
+  white-space: nowrap;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.log-table .col-msg {
+  width: 60%;
+  /* pre-wrap so newlines in JSON-ish messages stay; overflow-wrap:anywhere
+     lets long unbroken tokens (URLs, hashes) break inside the column
+     rather than forcing the column wider. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #000000;
+  font-weight: 500;
+}
+
+.suspicious li { margin-bottom: 6px; font-size: 12px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* ---- Evidence panel ---- */
+.evidence-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+.evidence-buttons button {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+}
+
+/* The form is hidden by default; openEvidenceForm() reveals it next to
+   the +Add buttons. Lives inside the same card as the buttons so the
+   user's eye stays in context. */
+.evidence-form {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #f8fafc;
+}
+.evidence-form h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.evidence-form label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.evidence-form input,
+.evidence-form textarea {
+  width: 100%;
+  margin-top: 4px;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.evidence-form-actions {
+  display: flex;
+  gap: 8px;
+}
+.evidence-form-actions button { width: auto; flex: 0 0 auto; }
+
+/* Saved evidence renders as cards. Coloured left border picks out the
+   kind at a glance — green/blue/orange/grey for mongo/opensearch/kafka/note. */
+.evidence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.evidence-card {
+  border: 1px solid var(--border);
+  border-left: 4px solid #94a3b8;
+  border-radius: 4px;
+  background: #ffffff;
+  overflow: hidden;
+}
+.evidence-card.evidence-mongo      { border-left-color: #16a34a; }
+.evidence-card.evidence-opensearch { border-left-color: #2563eb; }
+.evidence-card.evidence-kafka      { border-left-color: #f97316; }
+.evidence-card.evidence-note       { border-left-color: #94a3b8; }
+
+.evidence-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 10px;
+  background: #f1f5f9;
+  font-size: 12px;
+}
+.evidence-kind {
+  font-weight: 600;
+  color: #0f172a;
+}
+.evidence-title {
+  color: #475569;
+  font-style: italic;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evidence-delete {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #94a3b8;
+  padding: 0 6px;
+  font-size: 12px;
+  cursor: pointer;
+  margin: 0;
+  width: auto;
+  border-radius: 3px;
+}
+.evidence-delete:hover {
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+.evidence-content {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #1e293b;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* The command block sits between the header and the content. Visually
+   distinguished from the result body with a darker background so the
+   user reads it as 'this is what was run' vs 'this is what came back'.
+   Only rendered when item.command is non-empty (notes never have one). */
+.evidence-command {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #f1f5f9;
+  background: #0f172a;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 100px;
+  overflow-y: auto;
+  border-bottom: 1px solid #1e293b;
+}
+
+/* The 'filterPattern: "..."' label sits next to the Logs heading. Default
+   text colour washes out on the white card; give it a low-key but
+   readable mono treatment. */
+.card-header .hint.mono {
+  color: #475569;
+  font-size: 11px;
+}
+
+.hidden { display: none; }
