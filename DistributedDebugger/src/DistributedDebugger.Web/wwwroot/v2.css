@@ -372,6 +372,24 @@ button.small { width: auto; font-size: 11px; padding: 4px 10px; }
   overflow-y: auto;
 }
 
+/* The command block sits between the header and the content. Visually
+   distinguished from the result body with a darker background so the
+   user reads it as 'this is what was run' vs 'this is what came back'.
+   Only rendered when item.command is non-empty (notes never have one). */
+.evidence-command {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #f1f5f9;
+  background: #0f172a;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 100px;
+  overflow-y: auto;
+  border-bottom: 1px solid #1e293b;
+}
+
 /* The 'filterPattern: "..."' label sits next to the Logs heading. Default
    text colour washes out on the white card; give it a low-key but
    readable mono treatment. */
