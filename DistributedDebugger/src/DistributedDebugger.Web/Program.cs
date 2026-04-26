@@ -33,6 +33,10 @@ app.UseStaticFiles();
 // Lives alongside the existing V1 (agent) endpoints; the two are independent
 // and can run in parallel until V1 is retired.
 DistributedDebugger.Web.V2.V2Endpoints.MapV2Endpoints(app);
+// V3 — experimental variant with RAG retrieval on big gathered sets and
+// an evaluation harness. Lives at /v3.html and /api/v3/*. V2 is unchanged
+// and continues to serve at /v2.html / /api/v2/*; both can run side-by-side.
+DistributedDebugger.Web.V3.V3Endpoints.MapV3Endpoints(app);
 
 // Fetch raw matching CloudWatch log lines — no AI, no session needed.
 // Used by the UI to preview log results before starting an investigation.

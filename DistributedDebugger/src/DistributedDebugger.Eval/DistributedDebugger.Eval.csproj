@@ -16,5 +16,11 @@
     <ProjectReference Include="..\DistributedDebugger.Core\DistributedDebugger.Core.csproj" />
     <ProjectReference Include="..\DistributedDebugger.Agent\DistributedDebugger.Agent.csproj" />
     <ProjectReference Include="..\DistributedDebugger.Tools\DistributedDebugger.Tools.csproj" />
+    <!-- V3 eval harness reuses the LogAnalyzer from the Web project directly
+         (skips the HTTP layer; we want to test the analyzer, not the network).
+         Referencing Web from a class-lib project pulls in some ASP.NET deps
+         we don't strictly need for grading, but it's the smallest delta and
+         avoids splitting the analyzer into its own library. -->
+    <ProjectReference Include="..\DistributedDebugger.Web\DistributedDebugger.Web.csproj" />
   </ItemGroup>
 </Project>

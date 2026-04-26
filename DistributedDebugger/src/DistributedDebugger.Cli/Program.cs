@@ -35,6 +35,28 @@ if (args[0] == "eval")
     return await EvalCommand.RunAsync(args, openAiKey, evalCts.Token);
 }
 
+// `eval-v3` runs the V3 regression suite — single-LLM-call analyzer with
+// optional RAG, graded by the same LlmAsJudgeGrader as V1's eval. Uses
+// YAML cases under eval-cases-v3/ by default.
+if (args[0] == "eval-v3")
+{
+    var openAiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+    if (string.IsNullOrWhiteSpace(openAiKey))
+    {
+        Console.Error.WriteLine("OPENAI_API_KEY is not set.");
+        return 1;
+    }
+
+    using var evalCts = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) =>
+    {
+        e.Cancel = true;
+        evalCts.Cancel();
+    };
+
+    return await EvalV3Command.RunAsync(args, openAiKey, evalCts.Token);
+}
+
 if (args[0] != "investigate")
 {
     Console.Error.WriteLine($"Unknown command: {args[0]}");
@@ -240,12 +262,14 @@ static void PrintUsage()
     Console.WriteLine("Commands:");
     Console.WriteLine("  investigate   Run a single investigation against real systems (or mocks).");
     Console.WriteLine("  eval          Replay recorded cases through the grader for regression testing.");
+    Console.WriteLine("  eval-v3       Run V3 single-call analyzer + RAG over YAML cases (no agent loop).");
     Console.WriteLine();
     Console.WriteLine("Usage:");
     Console.WriteLine("  debugger investigate --desc \"<bug description>\" [options]");
     Console.WriteLine("  debugger investigate --desc-file <path>           [options]");
     Console.WriteLine("  debugger investigate --ticket <id> [--desc \"...\"] [options]");
     Console.WriteLine("  debugger eval [--cases <dir>] [--config <id> ...] [--judge-model gpt-4o]");
+    Console.WriteLine("  debugger eval-v3 [--cases <dir>] [--config baseline|no-rag] [--judge-model gpt-4o]");
     Console.WriteLine();
     Console.WriteLine("investigate options:");
     Console.WriteLine("  --desc <text>       Bug description (quoted).");
@@ -284,4 +308,7 @@ static void PrintUsage()
     Console.WriteLine();
     Console.WriteLine("  # Regression suite — compare two configs across all recorded cases");
     Console.WriteLine("  debugger eval --config baseline --config big-model");
+    Console.WriteLine();
+    Console.WriteLine("  # V3 regression — A/B compare RAG vs no-RAG over YAML cases");
+    Console.WriteLine("  debugger eval-v3 --config baseline --config no-rag");
 }
