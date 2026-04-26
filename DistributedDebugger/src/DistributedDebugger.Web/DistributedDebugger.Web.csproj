@@ -10,6 +10,14 @@
     <ProjectReference Include="..\DistributedDebugger.Agent\DistributedDebugger.Agent.csproj" />
   </ItemGroup>
 
+  <!-- V3 investigation memory uses SQLite + the sqlite-vec extension (vec0).
+       Microsoft.Data.Sqlite handles the connection and exposes LoadExtension;
+       the vec0 native binary itself is fetched by scripts/bootstrap-vec.sh
+       into ~/.dd/. See SqliteVecInvestigationMemory.cs for path resolution. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+  </ItemGroup>
+
   <!-- Schema markdown files travel two dirs up from this csproj — they're a
        documentation-style asset, not service-specific code. Copy them to
        bin/<config>/<tfm>/schemas/ so the LogAnalyzer can read them at

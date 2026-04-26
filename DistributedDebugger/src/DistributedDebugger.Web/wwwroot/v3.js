@@ -305,6 +305,11 @@ async function onAnalyze() {
         // Strip the local id field — the server doesn't need or expect it.
         evidence: state.evidence.map(({ kind, title, command, content }) =>
           ({ kind, title, command, content })),
+        // Per-request memory toggle. The server has its own env-var default
+        // (DD_MEMORY_DISABLED), but the checkbox always wins. Sending the
+        // flag explicitly even when checked makes the wiring obvious in
+        // network logs.
+        useMemory: $('useMemory').checked,
       }),
     });
     const data = await safeJson(res);
@@ -328,8 +333,24 @@ async function onAnalyze() {
         ? `RAG: kept ${data.rag.keptCount} of ${data.rag.fromCount} (top-K, threshold ${data.rag.threshold})`
         : `RAG: skipped (${data.rag.fromCount} ≤ threshold ${data.rag.threshold})`;
     }
-    $analysisCost.textContent =
-      `${ragLine ? ragLine + ' · ' : ''}schemas: ${schemas} · tokens: ${data.inputTokens} in / ${data.outputTokens} out`;
+    // V3-specific: memory bookkeeping. Three possible states:
+    //   "memory: 2 related (of 47)"     — read fired, found matches
+    //   "memory: 0 related (of 47)"     — read fired, no matches above threshold
+    //   "memory: off"                    — checkbox unchecked or env disabled
+    //   "memory: unavailable (...)"      — vec0 missing or other init failure
+    let memLine = '';
+    if (data.memory) {
+      if (!data.memory.enabled) {
+        memLine = 'memory: off';
+      } else if (data.memory.used) {
+        memLine = `memory: ${data.memory.retrievedCount} related (of ${data.memory.corpusSize})`;
+      } else {
+        memLine = `memory: unavailable (${data.memory.skipReason ?? 'unknown'})`;
+      }
+    }
+    $analysisCost.textContent = [ragLine, memLine, `schemas: ${schemas}`,
+        `tokens: ${data.inputTokens} in / ${data.outputTokens} out`]
+      .filter(Boolean).join(' · ');
     setStatus('Analysis complete.', 'success');
   } catch (err) {
     setStatus(`Analyze failed: ${err.message}`, 'error');

@@ -40,6 +40,59 @@ dotnet run --project src/DistributedDebugger.Cli -- eval \
   --config baseline --config big-model
 ```
 
+## V3: deterministic flow with RAG, schemas, and memory
+
+V3 is a separate UI/endpoint variant served at `/v3.html` and `/api/v3/*`.
+V2 (`/v2.html`) keeps working unchanged so you can A/B them on the same
+bug. V3 adds three things on top of V2's filter/extend/analyze flow:
+
+1. **RAG retrieval before analyze.** When the gathered log set crosses a
+   threshold (default 100), V3 narrows it to the top-K most relevant lines
+   using a hybrid keyword+semantic retriever. Below threshold it's a
+   pass-through. Configurable via `V3_RAG_THRESHOLD` and `V3_RAG_TOPK`.
+
+2. **Schemas bundled into every analyze prompt.** `schemas/*.md` are
+   prepended as `## Reference: schemas` so the model knows CoCo's collection
+   shapes without you explaining them every time.
+
+3. **Investigation memory.** Past V3 analyses are persisted in a SQLite +
+   sqlite-vec database at `~/.dd/memory.db` and retrieved by similarity
+   when you start a new analysis ("you saw something like this two weeks
+   ago — root cause was X"). Toggle off via the checkbox in the bug context
+   card or the `DD_MEMORY_DISABLED=1` env var.
+
+### One-time setup for V3 memory
+
+The memory feature uses the [sqlite-vec](https://github.com/asg017/sqlite-vec)
+SQLite extension (vec0). The native binary isn't in NuGet yet, so we ship
+a small bootstrap script that downloads the right one for your OS:
+
+```bash
+# Linux / macOS — fetches vec0.so or vec0.dylib into ~/.dd/
+./scripts/bootstrap-vec.sh
+
+# Windows
+powershell -ExecutionPolicy Bypass -File scripts/bootstrap-vec.ps1
+```
+
+If you skip this step, V3 still works — memory just degrades gracefully
+to "off" with a stderr warning. Schemas, RAG, and the rest of analyze are
+unaffected.
+
+### V3 eval harness
+
+```bash
+# Run all configs (baseline / no-rag / with-memory) over the case suite.
+# Eval uses /tmp/dd-eval-memory.db — synthetic cases never touch your real
+# memory at ~/.dd/memory.db.
+dotnet run --project src/DistributedDebugger.Cli -- eval-v3
+```
+
+Useful comparisons:
+- `--config baseline --config no-rag` — does RAG help on big log sets?
+- `--config baseline --config with-memory` — does memory help when cases
+  share patterns?
+
 Example eval output:
 
 ```

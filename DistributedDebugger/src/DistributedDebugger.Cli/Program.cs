@@ -269,7 +269,7 @@ static void PrintUsage()
     Console.WriteLine("  debugger investigate --desc-file <path>           [options]");
     Console.WriteLine("  debugger investigate --ticket <id> [--desc \"...\"] [options]");
     Console.WriteLine("  debugger eval [--cases <dir>] [--config <id> ...] [--judge-model gpt-4o]");
-    Console.WriteLine("  debugger eval-v3 [--cases <dir>] [--config baseline|no-rag] [--judge-model gpt-4o]");
+    Console.WriteLine("  debugger eval-v3 [--cases <dir>] [--config baseline|no-rag|with-memory] [--judge-model gpt-4o]");
     Console.WriteLine();
     Console.WriteLine("investigate options:");
     Console.WriteLine("  --desc <text>       Bug description (quoted).");
@@ -311,4 +311,8 @@ static void PrintUsage()
     Console.WriteLine();
     Console.WriteLine("  # V3 regression — A/B compare RAG vs no-RAG over YAML cases");
     Console.WriteLine("  debugger eval-v3 --config baseline --config no-rag");
+    Console.WriteLine();
+    Console.WriteLine("  # V3 regression — measure whether memory retrieval helps");
+    Console.WriteLine("  # (eval uses /tmp/dd-eval-memory.db, NOT your real ~/.dd/memory.db)");
+    Console.WriteLine("  debugger eval-v3 --config with-memory --config baseline");
 }

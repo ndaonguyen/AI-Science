@@ -32,7 +32,14 @@ public sealed class LogAnalyzer
         IReadOnlyList<LogRecord> logs,
         IReadOnlyList<V3Endpoints.EvidenceItem> evidence,
         IReadOnlyList<SchemaDoc> schemas,
-        CancellationToken ct)
+        CancellationToken ct,
+        // Optional pre-rendered memory section. When non-null, prepended to
+        // the prompt before schemas as '## Related past investigations'. The
+        // pipeline that builds this string lives in MemoryPipeline so the
+        // analyzer doesn't need to know about embeddings or vector stores.
+        // Null = memory disabled or empty corpus, in which case we just skip
+        // the section entirely.
+        string? memorySection = null)
     {
         if (logs.Count == 0)
         {
@@ -58,11 +65,16 @@ public sealed class LogAnalyzer
             "OpenSearch, Kafka, ECS). The user has already filtered the logs down " +
             "to a specific set they want analysed, may have pasted supporting " +
             "evidence from MongoDB, OpenSearch, Kafka, or other sources, and the " +
-            "prompt may also include reference SCHEMAS for the relevant services. " +
+            "prompt may also include reference SCHEMAS for the relevant services " +
+            "and RELATED PAST INVESTIGATIONS the same user has done before. " +
             "Use the schemas as ground truth for field names, types, and " +
             "nullability — if evidence shows a value that violates the schema " +
             "(e.g. null where the model declares a non-nullable Guid), call it " +
-            "out as a likely cause. Read every log line. Look for exceptions, " +
+            "out as a likely cause. Treat past investigations as patterns to " +
+            "consider, not definitive answers — if the current evidence matches " +
+            "a past root cause, say so AND say what specifically supports the " +
+            "match; if the evidence diverges from a similar-looking past case, " +
+            "say what's different. Read every log line. Look for exceptions, " +
             "stack traces, error/warn lines, timeouts, connection failures, null " +
             "references, retries, and any behaviour inconsistent with the bug " +
             "description. When evidence is provided, cross-reference it against " +
@@ -72,7 +84,7 @@ public sealed class LogAnalyzer
             "clear, say so honestly and suggest what to investigate next " +
             "(Mongo? OpenSearch? Kafka? other services?).";
 
-        var userPrompt = BuildUserPrompt(bugDescription, ticketId, logs, evidence, schemas);
+        var userPrompt = BuildUserPrompt(bugDescription, ticketId, logs, evidence, schemas, memorySection);
 
         var client = new ChatClient(model: _model, apiKey: _apiKey);
         var options = new ChatCompletionOptions
@@ -112,15 +124,26 @@ public sealed class LogAnalyzer
         string? ticket,
         IReadOnlyList<LogRecord> logs,
         IReadOnlyList<V3Endpoints.EvidenceItem> evidence,
-        IReadOnlyList<SchemaDoc> schemas)
+        IReadOnlyList<SchemaDoc> schemas,
+        string? memorySection)
     {
         var sb = new System.Text.StringBuilder();
 
-        // Schemas FIRST so the model treats them as reference material it
-        // applies to everything that follows. Each schema is fenced as
-        // markdown — already-markdown content stays markdown; the LLM
-        // handles nested fences fine. Skip the section entirely when no
-        // schemas are loaded so we don't waste tokens on a placeholder.
+        // Memory FIRST: 'have we seen this before?' is the most useful frame
+        // for everything that follows. Pre-rendered upstream so we don't
+        // pull memory dependencies into this method. Null = no memory
+        // (either disabled or empty corpus); skip the section entirely.
+        if (!string.IsNullOrWhiteSpace(memorySection))
+        {
+            sb.Append(memorySection);
+            sb.AppendLine();
+        }
+
+        // Schemas next: ground-truth reference material the model applies to
+        // everything below. Each schema is fenced as markdown — already-
+        // markdown content stays markdown; the LLM handles nested fences
+        // fine. Skip the section entirely when no schemas are loaded so we
+        // don't waste tokens on a placeholder.
         if (schemas is { Count: > 0 })
         {
             sb.AppendLine("## Reference: schemas");
