@@ -140,6 +140,51 @@ body {
 .hint-link:hover { text-decoration: underline; }
 .hint-link.hidden { display: none; }
 
+/* Range-select control in the logs-title-row. Two narrow numeric inputs
+   plus a Select button. Visually compact so it doesn't dominate the
+   header; the inputs auto-size to ~5 character widths and lose their
+   spinner buttons (which look chunky and aren't useful here — typing is
+   faster than clicking up arrows for log row numbers).
+   The whole group is .hidden until there's at least one log to select. */
+.range-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+.range-select.hidden { display: none; }
+.range-select input[type="number"] {
+  width: 56px;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-family: inherit;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  /* Hide native spinner buttons — they're noisy at this size and the user
+     usually knows the number they want. */
+  -moz-appearance: textfield;
+}
+.range-select input[type="number"]::-webkit-outer-spin-button,
+.range-select input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.range-select .range-dash {
+  color: #94a3b8;
+}
+.range-select button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  /* Inherit the .hint-link colour so the disabled/enabled feel matches the
+     'Select all' / 'Clear selection' siblings on either side. */
+}
+.range-select button:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
 .extend-presets {
   display: flex;
   gap: 4px;
