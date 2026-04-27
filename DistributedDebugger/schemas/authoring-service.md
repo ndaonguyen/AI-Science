@@ -62,7 +62,7 @@ Each document is one block. Discriminator field `_t` decides the shape.
 | Field | Type | Nullable | Notes |
 |---|---|---|---|
 | `_id` | UUID | required | |
-| `_t` | string | required | `"ComponentBlockModel"` or `"SectionBlockModel"` |
+| `_t` | string[] | required | **Array, not a single string.** `BlockModel` has `[BsonDiscriminator(RootClass = true)]`, so the driver serialises the full class hierarchy. Concrete blocks store `["BlockModel", "ComponentBlockModel"]` or `["BlockModel", "SectionBlockModel"]`. To match in queries: use `_t: "ComponentBlockModel"` (Mongo matches a string against an array element automatically) or explicit `_t: { $in: ["ComponentBlockModel"] }`. Components inside the array use `_t` as a plain string — see below. |
 | `title` | string | yes | |
 | `description` | string | yes | |
 | `notes` | string | yes | author notes |
@@ -109,7 +109,7 @@ Each component is also a discriminated union. The discriminator is `_t` (subclas
 | Field | Type | Nullable | Notes |
 |---|---|---|---|
 | `_id` | UUID | required | |
-| `_t` | string | required | subclass name (e.g. `"ImageComponentModel"`) |
+| `_t` | string | required | Subclass name as a **plain string** (e.g. `"ImageComponentModel"`). Components are leaf classes — they don't have `RootClass = true`, so the driver serialises just the leaf name, not the whole hierarchy. (Contrast with block-level `_t` which IS an array.) |
 | `type` | `ComponentType` | required | enum (see below) |
 | `controlType` | string | required | finer-grained control name |
 | `order` | int | yes | display order |
@@ -198,7 +198,7 @@ Adds:
 - **Field names are camelCase**, not PascalCase. `Id` → `id`. `CreatedAt` → `createdAt`. `IsLatest` → `isLatest`. The one exception is `_id` (Mongo standard) which is the same field as `Id` in C#.
 - **Enums are stored as their string name**, not integer value. `state: "Draft"` not `state: 0`.
 - **GUIDs use `GuidRepresentation.Standard`** — they show as `UUID("…")` in `mongosh`, not as `BinData(3, …)` or `BinData(4, …)`.
-- **Discriminators use `_t`** — `_t: "ComponentBlockModel"` etc.
+- **Discriminators use `_t`** — but the SHAPE differs by level. On `blocks` documents `_t` is an **array** with the class hierarchy (`["BlockModel", "ComponentBlockModel"]`) because `BlockModel` is a root class. On `activities` and on individual components inside `ComponentBlockModel.components`, `_t` is a plain **string** (e.g. `"ImageComponentModel"`). Mongo equality matching against an array element works automatically (`_t: "ComponentBlockModel"` matches the array), so most queries don't need to know — but `$type` checks and aggregation pipelines do.
 - **The `[BsonExtraElements]` is NOT used** in authoring-service models, so unknown fields would normally throw on deserialization — but the global `IgnoreExtraElementsConvention` is registered, so they're silently dropped instead.
 
 ## Common gotchas
@@ -207,3 +207,81 @@ Adds:
 - Documents with `isLatest: false` are historical — most queries should filter `isLatest: true` to get the canonical revision.
 - `state: "Draft"` and `state: "Published"` are the only two values. Activities/blocks deletion is soft (handled by `lifeCycleStatus` in content-search-service, not here).
 - An activity references blocks by id (`blocks: [UUID, …]`). A `SectionBlock` further references blocks (also by id). Recursion depth is at most 2 in practice (activity → section block → component block) but the schema doesn't enforce this.
+
+## Querying — worked examples
+
+These are the patterns most queries land in. Copy and adapt; don't write blind.
+
+### Find one block by id (the everyday case)
+
+```javascript
+db.blocks.findOne({ _id: UUID("a39ff7b7-5268-4078-81cf-de7c21409ffe") })
+```
+
+UUID literal in `mongosh`. Driver-side queries pass a `Guid` and the driver handles serialisation.
+
+### Find a block by component-level field (e.g. an image component with null assetId)
+
+`assetId` does NOT live on the block — it lives inside the `components` array on `ComponentBlockModel`. To match a *block whose `components` array contains a matching component*, use `$elemMatch`:
+
+```javascript
+db.blocks.find({
+  _t: "ComponentBlockModel",                // matches the array element
+  "components": {
+    $elemMatch: {
+      _t: "ImageComponentModel",            // component-level _t is a string
+      assetId: null
+    }
+  }
+})
+```
+
+Notes:
+- `_t: "ComponentBlockModel"` is enough — Mongo matches the string against any array element. You can also write `_t: { $in: ["ComponentBlockModel"] }` for clarity.
+- `$elemMatch` is required because the same array might contain a `Select` component AND a malformed `Image` component; without `$elemMatch`, Mongo would match if `_t` and `assetId` appear on *any* elements, not necessarily the same one.
+- `assetId: null` will only return docs where `assetId` is *literally null*, not where it's missing. To catch both, use `{ $in: [null] }` plus `$exists` checks — usually not needed in practice because the bug pattern is exactly "field present and null".
+
+### Find a section block referencing a specific child
+
+```javascript
+db.blocks.find({ _t: "SectionBlockModel", "blocks": UUID("...") })
+```
+
+Mongo equality against an array element matches if any element equals the target.
+
+### Find activities published in a time window
+
+```javascript
+db.activities.find({
+  state: "Published",
+  isLatest: true,
+  publishedAt: {
+    $gte: ISODate("2025-12-15T00:00:00Z"),
+    $lt:  ISODate("2025-12-16T00:00:00Z")
+  }
+}).limit(20)
+```
+
+Always pair `isLatest: true` with state filters unless you specifically want history.
+
+### Project just the components of a block (don't pull the full doc)
+
+```javascript
+db.blocks.findOne(
+  { _id: UUID("...") },
+  { components: 1, _t: 1, _id: 0 }
+)
+```
+
+Useful when blocks have large `description` fields and you only need to reason about the components shape.
+
+### Aggregation: list distinct component types in a block (debugging helper)
+
+```javascript
+db.blocks.aggregate([
+  { $match: { _id: UUID("...") } },
+  { $unwind: "$components" },
+  { $group: { _id: "$components._t", count: { $sum: 1 } } }
+])
+```
+
