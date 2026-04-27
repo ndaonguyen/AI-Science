@@ -63,21 +63,100 @@ bug. V3 adds three things on top of V2's filter/extend/analyze flow:
 
 ### One-time setup for V3 memory
 
-The memory feature uses the [sqlite-vec](https://github.com/asg017/sqlite-vec)
-SQLite extension (vec0). The native binary isn't in NuGet yet, so we ship
-a small bootstrap script that downloads the right one for your OS:
+Memory uses the [sqlite-vec](https://github.com/asg017/sqlite-vec) SQLite
+extension (`vec0`). The extension is a small native library that doesn't
+ship via NuGet yet, so a bootstrap script downloads the right binary for
+your OS into `~/.dd/`. Skipping this step is fine — V3 will run without
+memory and the status line will say `memory: unavailable (...)`. The
+analyzer, RAG, and schemas all still work.
 
+You only need to do this **once per machine**.
+
+#### Step 1 — Run the bootstrap script
+
+**Linux / macOS:**
 ```bash
-# Linux / macOS — fetches vec0.so or vec0.dylib into ~/.dd/
+cd DistributedDebugger
 ./scripts/bootstrap-vec.sh
+```
 
-# Windows
+**Windows (PowerShell):**
+```powershell
+cd DistributedDebugger
 powershell -ExecutionPolicy Bypass -File scripts/bootstrap-vec.ps1
 ```
 
-If you skip this step, V3 still works — memory just degrades gracefully
-to "off" with a stderr warning. Schemas, RAG, and the rest of analyze are
-unaffected.
+You should see output like:
+```
+-> fetching https://github.com/asg017/sqlite-vec/releases/...
+-> extracting
+[OK] installed C:\Users\you\.dd\vec0.dll
+```
+
+(Path will be `~/.dd/vec0.so` on Linux, `~/.dd/vec0.dylib` on macOS.)
+
+#### Step 2 — Verify the binary is in place
+
+**Linux / macOS:**
+```bash
+ls -la ~/.dd/vec0.*
+```
+
+**Windows (PowerShell):**
+```powershell
+Test-Path "$env:USERPROFILE\.dd\vec0.dll"   # should print: True
+(Get-Item "$env:USERPROFILE\.dd\vec0.dll").Length   # should be ~1-2 MB
+```
+
+If the file is missing or zero bytes, re-run the bootstrap script and
+read its output for download errors (most common: corporate proxy
+blocking GitHub releases).
+
+#### Step 3 — Restart and test
+
+Restart the web app so .NET attempts to load the extension fresh, then
+run any V3 analyze. Look at the status line under the analysis output:
+
+| Line says... | Means... |
+|---|---|
+| `memory: 0 related (of 0)` | Working. Empty corpus on first run; will grow as you analyze. |
+| `memory: 2 related (of 47)` | Working. Found 2 similar past investigations out of 47 stored. |
+| `memory: off` | Toggle is unchecked or `DD_MEMORY_DISABLED=1` is set. |
+| `memory: unavailable (init failed: ...)` | vec0 isn't loading. See troubleshooting below. |
+
+#### Troubleshooting
+
+**`SQLite Error 1: 'The specified module could not be found.'` (Windows)**
+
+Two possible causes:
+
+1. The DLL isn't where Microsoft.Data.Sqlite is looking. Verify with the
+   Step 2 check. If `Test-Path` returns `False`, re-run the bootstrap.
+2. The DLL is on disk but a **Visual C++ runtime dependency is missing**.
+   Install [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+   and try again. Most dev machines already have it from Visual Studio
+   or Rider, but a fresh box might not.
+
+**`cannot open shared object file` (Linux) / `image not found` (macOS)**
+
+The native loader can't find vec0. Either:
+1. The bootstrap put the file somewhere unexpected — check Step 2.
+2. The file is there but for the wrong architecture (e.g. you're on
+   ARM64 but downloaded x86_64). Re-run the bootstrap; it auto-detects
+   `uname -m`.
+
+**`PowerShell parse error in bootstrap-vec.ps1`**
+
+You're on a version before commit `e817b48` (the encoding fix). Pull
+the latest `main` and re-run.
+
+**Custom location**
+
+If `~/.dd/` isn't writable for some reason, set `DD_VEC0_PATH` to point
+at the binary explicitly:
+```bash
+export DD_VEC0_PATH=/some/other/path/vec0.so
+```
 
 ### V3 eval harness
 
