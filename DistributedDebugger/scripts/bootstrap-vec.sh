@@ -2,7 +2,7 @@
 # Download the sqlite-vec native extension (vec0) for the host OS and arch
 # into ~/.dd/, where SqliteVecInvestigationMemory will find it at runtime.
 #
-# Run this once after cloning. Idempotent — re-running on the same machine
+# Run this once after cloning. Idempotent -- re-running on the same machine
 # just overwrites the existing binary with whatever VERSION is set below.
 #
 # Why download instead of bundle: vec0 ships separate binaries for
@@ -41,12 +41,12 @@ VERSION_NO_V="${VERSION#v}"
 ASSET="sqlite-vec-${VERSION_NO_V}-loadable-${OS}-${ARCH}.tar.gz"
 URL="https://github.com/asg017/sqlite-vec/releases/download/${VERSION}/${ASSET}"
 
-echo "→ fetching ${URL}"
+echo "-> fetching ${URL}"
 TMP="$(mktemp -d)"
 trap "rm -rf ${TMP}" EXIT
 curl -fSL --output "${TMP}/${ASSET}" "${URL}"
 
-echo "→ extracting"
+echo "-> extracting"
 tar -xzf "${TMP}/${ASSET}" -C "${TMP}"
 
 # The tarball contains a single shared library file: vec0.so, vec0.dylib, or
@@ -54,7 +54,7 @@ tar -xzf "${TMP}/${ASSET}" -C "${TMP}"
 # is the safe move).
 LIB_PATH="$(find "${TMP}" -type f -name "vec0.${EXT}" -print -quit)"
 if [[ -z "${LIB_PATH}" ]]; then
-  echo "Couldn't find vec0.${EXT} in the tarball — sqlite-vec may have changed its asset layout. Inspect ${TMP} manually." >&2
+  echo "Couldn't find vec0.${EXT} in the tarball -- sqlite-vec may have changed its asset layout. Inspect ${TMP} manually." >&2
   exit 1
 fi
 
@@ -62,5 +62,5 @@ DEST="${TARGET_DIR}/vec0.${EXT}"
 cp "${LIB_PATH}" "${DEST}"
 chmod +x "${DEST}"
 
-echo "✓ installed ${DEST}"
+echo "[OK] installed ${DEST}"
 echo "  set DD_VEC0_PATH=${DEST} (or rely on the default lookup) to use it."
