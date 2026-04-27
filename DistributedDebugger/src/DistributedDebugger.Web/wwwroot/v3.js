@@ -23,6 +23,13 @@ const state = {
   // What kind of evidence the form is currently editing. Null when the
   // form is closed. Set when a 'Add' button is clicked.
   evidenceFormKind: null,
+  // The most recent analysis returned by /analyze, plus the inputs that
+  // produced it. Stashed so the 'Suggest queries' follow-up can send the
+  // analysis back to the server without re-typing the bug context. Null
+  // until first analyze completes; reset when a new analyze starts so an
+  // in-progress request can't poison stale state.
+  lastAnalysis: null,
+  lastAnalysisContext: null,
 };
 
 // Service list mirrors the V1 ServiceLogGroupResolver.KnownServices. Keep
@@ -114,6 +121,9 @@ const $evidenceFormCancel   = $('evidenceFormCancel');
   $extendBtn.addEventListener('click', onExtend);
   $analyzeBtn.addEventListener('click', onAnalyze);
   $clearBtn.addEventListener('click', onClear);
+  // Suggest-queries follow-up. The button is hidden until an analysis
+  // exists; this handler is wired once at init and remains live.
+  document.getElementById('suggestQueriesBtn').addEventListener('click', onSuggestQueries);
 
   // 'Clear selection' link in the Logs card header. Only deselects
   // rows; the gathered log set is unaffected. Keeps the user in flow when
@@ -355,6 +365,26 @@ async function onAnalyze() {
     const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     renderAnalysis(data);
+    // Stash everything needed to fire a follow-up 'Suggest queries' call.
+    // We snapshot the description / ticket / evidence at THIS analyze's
+    // moment — if the user changes them after analyze but before clicking
+    // Suggest, the suggestion still corresponds to the analysis the user
+    // sees on screen.
+    state.lastAnalysis = data;
+    state.lastAnalysisContext = {
+      description,
+      ticketId: $('ticketId').value || null,
+      evidence: state.evidence.map(({ kind, title, command, content }) =>
+        ({ kind, title, command, content })),
+    };
+    // Reveal the Suggest-queries area now that there's an analysis to
+    // suggest against. Reset the prior status / list so a previous
+    // suggestion's output doesn't linger over a fresh analysis.
+    document.getElementById('suggestQueriesArea').classList.remove('hidden');
+    document.getElementById('suggestQueriesList').innerHTML = '';
+    document.getElementById('suggestQueriesStatus').textContent = '';
+    document.getElementById('suggestQueriesBtn').disabled = false;
+    document.getElementById('suggestQueriesBtn').textContent = 'Suggest next queries';
     // The schemasIncluded array names which reference schemas the analyzer
     // prepended to the prompt. Surfacing them here is a quick sanity check
     // that the wiring is firing — if you ever see 'schemas: (none)' the
@@ -828,6 +858,138 @@ function renderAnalysis(a) {
     html.push('</ul>');
   }
   $analysisBody.innerHTML = html.join('');
+}
+
+// ---- suggest queries ----
+
+/// Click handler for the 'Suggest next queries' button. Sends the most
+/// recent analysis (stashed at /analyze success time) plus the bug
+/// description and evidence to /api/v3/logs/suggest-queries, then renders
+/// the response as a stack of suggestion cards.
+///
+/// Errors render inline rather than as a global toast — the analysis is
+/// still visible and useful, so the user shouldn't lose their place.
+async function onSuggestQueries() {
+  if (!state.lastAnalysis || !state.lastAnalysisContext) {
+    // Defensive: button should be hidden when this is the case, but if
+    // something went wrong with the reveal logic, fail loudly here rather
+    // than firing a malformed request.
+    setStatus('No analysis to suggest queries for. Run Analyze first.', 'error');
+    return;
+  }
+
+  const $btn    = document.getElementById('suggestQueriesBtn');
+  const $status = document.getElementById('suggestQueriesStatus');
+  const $list   = document.getElementById('suggestQueriesList');
+
+  $btn.disabled = true;
+  $btn.textContent = 'Suggesting…';
+  $status.textContent = '';
+  $list.innerHTML = '';
+
+  const a = state.lastAnalysis;
+  try {
+    const res = await fetch('/api/v3/logs/suggest-queries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...state.lastAnalysisContext,
+        analysis: {
+          summary:            a.summary,
+          suspicious:         a.suspicious ?? [],
+          hypothesis:         a.hypothesis,
+          suggestedFollowups: a.suggestedFollowups ?? [],
+        },
+      }),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    renderSuggestedQueries(data.suggestions ?? []);
+
+    const n = (data.suggestions ?? []).length;
+    $status.textContent = n === 0
+      ? 'No queries suggested.'
+      : `${n} suggestion${n === 1 ? '' : 's'} · tokens: ${data.inputTokens} in / ${data.outputTokens} out`;
+    $btn.textContent = 'Suggest again';
+    $btn.disabled = false;
+  } catch (err) {
+    $status.textContent = `Failed: ${err.message}`;
+    $btn.textContent = 'Suggest next queries';
+    $btn.disabled = false;
+  }
+}
+
+/// Render a list of QuerySuggestion objects into the suggestQueriesList
+/// container. Each suggestion gets a card with: a coloured system tag,
+/// the executable query in a mono code block, a Copy button, and a
+/// rationale line. The Copy button uses the Clipboard API (available
+/// everywhere on http://localhost) and flips to a 'Copied!' state for a
+/// second so the user gets visible feedback.
+function renderSuggestedQueries(suggestions) {
+  const $list = document.getElementById('suggestQueriesList');
+  if (suggestions.length === 0) {
+    $list.innerHTML = '';
+    return;
+  }
+  // Build via DOM rather than innerHTML so the Copy buttons can carry
+  // closures over their own query string — simpler than data-* attributes
+  // plus delegated event handling for a small, fixed-size list.
+  $list.innerHTML = '';
+  for (const s of suggestions) {
+    const card = document.createElement('div');
+    card.className = 'suggested-query';
+
+    const header = document.createElement('div');
+    header.className = 'sq-header';
+
+    const tag = document.createElement('span');
+    tag.className = `sq-system ${s.system}`;
+    tag.textContent = s.system;
+    header.appendChild(tag);
+
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'sq-copy';
+    copy.textContent = 'Copy';
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(s.query);
+        copy.textContent = 'Copied!';
+        copy.classList.add('copied');
+        setTimeout(() => {
+          copy.textContent = 'Copy';
+          copy.classList.remove('copied');
+        }, 1200);
+      } catch {
+        // Clipboard API can fail when the page isn't focused or in some
+        // browser contexts. Fall back to selecting the query so the user
+        // can manually copy.
+        const range = document.createRange();
+        range.selectNodeContents(card.querySelector('.sq-query'));
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    });
+    header.appendChild(copy);
+
+    card.appendChild(header);
+
+    const pre = document.createElement('pre');
+    pre.className = 'sq-query';
+    pre.textContent = s.query;
+    card.appendChild(pre);
+
+    if (s.rationale) {
+      const r = document.createElement('div');
+      r.className = 'sq-rationale';
+      r.textContent = s.rationale;
+      card.appendChild(r);
+    }
+
+    $list.appendChild(card);
+  }
 }
 
 // ---- formatting ----

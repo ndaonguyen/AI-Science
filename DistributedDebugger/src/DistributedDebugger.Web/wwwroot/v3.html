@@ -211,10 +211,22 @@
           <span id="analysisCost" class="hint mono"></span>
         </div>
         <div id="analysisBody"></div>
+        <!-- Suggest-queries follow-up. Hidden until an analysis exists.
+             Clicking fires a separate LLM call against the analysis output
+             plus schemas, asking for 2-5 concrete next queries to confirm
+             or rule out the hypothesis. Optional per analyze; users who
+             don't want the extra cost just don't click. -->
+        <div id="suggestQueriesArea" class="suggest-queries-area hidden">
+          <button id="suggestQueriesBtn" type="button" class="secondary">
+            Suggest next queries
+          </button>
+          <span id="suggestQueriesStatus" class="hint mono"></span>
+          <div id="suggestQueriesList" class="suggest-queries-list"></div>
+        </div>
       </div>
     </section>
   </main>
 
-  <script src="v3.js?v=5"></script>
+  <script src="v3.js?v=6"></script>
 </body>
 </html>

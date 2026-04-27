@@ -321,6 +321,58 @@ public static class V3Endpoints
                 return Results.Json(new { error = $"{ex.GetType().Name}: {ex.Message}" }, statusCode: 500);
             }
         });
+
+        // POST /api/v3/logs/suggest-queries
+        // Optional follow-up to /analyze. Takes the analysis the user just
+        // received and produces a list of executable queries (Mongo /
+        // OpenSearch / Kafka) that would confirm or rule out the hypothesis.
+        // On-demand: only fires when the user clicks 'Suggest queries' in
+        // the UI. Doesn't re-process raw logs (~8K tokens) — the analysis
+        // output already distills what's relevant.
+        app.MapPost("/api/v3/logs/suggest-queries", async (
+            SuggestQueriesRequest req,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(req.Description))
+                    return Results.Json(new { error = "description is required" }, statusCode: 400);
+                if (req.Analysis is null || string.IsNullOrWhiteSpace(req.Analysis.Hypothesis))
+                    return Results.Json(new { error = "analysis with hypothesis is required" }, statusCode: 400);
+
+                var openaiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
+                    ?? throw new InvalidOperationException("OPENAI_API_KEY not set.");
+
+                var evidence = (req.Evidence ?? Array.Empty<EvidenceItem>())
+                    .Where(e => !string.IsNullOrWhiteSpace(e.Content) || !string.IsNullOrWhiteSpace(e.Title))
+                    .ToList();
+
+                var analysisInput = new AnalysisInput(
+                    Summary: req.Analysis.Summary,
+                    Suspicious: req.Analysis.Suspicious ?? Array.Empty<string>(),
+                    Hypothesis: req.Analysis.Hypothesis,
+                    SuggestedFollowups: req.Analysis.SuggestedFollowups ?? Array.Empty<string>());
+
+                var suggester = new QuerySuggester(openaiKey);
+                var result = await suggester.SuggestAsync(
+                    req.Description, req.TicketId, analysisInput, evidence, schemas.All, ct);
+
+                Console.Error.WriteLine(
+                    $"[v3/suggest-queries] {result.Suggestions.Count} suggestions ({result.InputTokens}+{result.OutputTokens} tok)");
+
+                return Results.Ok(new
+                {
+                    suggestions = result.Suggestions,
+                    inputTokens = result.InputTokens,
+                    outputTokens = result.OutputTokens,
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[v3/suggest-queries] {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+                return Results.Json(new { error = $"{ex.GetType().Name}: {ex.Message}" }, statusCode: 500);
+            }
+        });
     }
 
     /// <summary>
@@ -417,6 +469,29 @@ public static class V3Endpoints
         string? Title,
         string? Command,
         string? Content);
+
+    /// <summary>
+    /// Request body for the /suggest-queries endpoint. The analysis subset
+    /// is the JSON-shape the V3 /analyze response uses, sent back so the
+    /// suggester can ground its queries in the just-completed analysis
+    /// without re-processing the raw logs.
+    /// </summary>
+    public sealed record SuggestQueriesRequest(
+        string? Description,
+        string? TicketId,
+        IReadOnlyList<EvidenceItem>? Evidence,
+        AnalysisSubset? Analysis);
+
+    /// <summary>
+    /// Just the parts of <see cref="AnalysisResult"/> the suggester actually
+    /// needs. Schema-included list, token counts, etc are dropped — they
+    /// don't help the suggester. Mirrors <see cref="AnalysisInput"/>.
+    /// </summary>
+    public sealed record AnalysisSubset(
+        string? Summary,
+        IReadOnlyList<string>? Suspicious,
+        string Hypothesis,
+        IReadOnlyList<string>? SuggestedFollowups);
 
     // ---- helpers ----
 
