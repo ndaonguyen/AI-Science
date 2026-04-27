@@ -67,6 +67,27 @@ public sealed class QuerySuggester
             "in the analysis or filling a gap. " +
             "Use the bundled SCHEMAS as ground truth for collection names, " +
             "field names, types, and id shapes (ObjectId vs string vs Guid). " +
+            "If the SCHEMAS document includes a 'Querying' section with worked " +
+            "examples, follow those patterns precisely — they encode subtle " +
+            "MongoDB conventions (e.g. discriminator field shape, nested array " +
+            "matching with $elemMatch) that are easy to get wrong. " +
+            "CRITICAL — common mistakes to avoid: " +
+            "  1. Querying a NESTED field at the WRONG level. If a field lives " +
+            "     inside an array (e.g. `block.components[].assetId`), do NOT " +
+            "     write `db.blocks.find({ assetId: ... })` — that matches a " +
+            "     top-level field that doesn't exist. Use `$elemMatch` to " +
+            "     match an array element: " +
+            "     `db.blocks.find({ components: { $elemMatch: { _t: ..., " +
+            "     assetId: ... } } })`. " +
+            "  2. Treating a discriminator field as a single value when it's " +
+            "     an array. MongoDB.Bson serialises root-class discriminators " +
+            "     as the full hierarchy array (e.g. `_t: [\"BlockModel\", " +
+            "     \"ComponentBlockModel\"]`). Equality matching against a " +
+            "     string still works (Mongo matches against any element), " +
+            "     but be aware. " +
+            "  3. Inventing field names not in the schema. If you can't write " +
+            "     the query without guessing, say so in the rationale and " +
+            "     use 'note' as the system instead of fabricating Mongo. " +
             "If the analysis names a specific id, use it verbatim in the " +
             "query — do not invent placeholders. If the analysis is vague " +
             "and you genuinely don't have enough to write a query, return " +
