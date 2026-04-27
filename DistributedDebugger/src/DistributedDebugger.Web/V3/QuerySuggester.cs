@@ -144,7 +144,7 @@ public sealed class QuerySuggester
             {
                 sb.Append("### ").AppendLine(s.Name);
                 sb.AppendLine();
-                sb.AppendLine(s.Markdown);
+                sb.AppendLine(s.Content);
                 sb.AppendLine();
             }
         }
