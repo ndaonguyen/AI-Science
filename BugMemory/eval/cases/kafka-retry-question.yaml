@@ -1,0 +1,20 @@
+id: kafka-retry-question
+description: |
+  Direct question about an event-replay-causes-duplicates pattern.
+  Should retrieve the kafka-retry-dup-key bug specifically, not the
+  Mongo deserialization one (which is also Mongo-flavoured but a
+  different problem).
+
+question: |
+  We're seeing duplicate-key errors in Mongo when the consumer in
+  content-search-service ingests events. It only happens under load.
+  Have we seen this before?
+
+expectedBugIds:
+  - kafka-retry-dup-key
+
+answerCriteria: |
+  Names the missing idempotency key as the root cause and the upsert
+  + unique-index pair as the fix. Does not invent unrelated retry
+  configuration suggestions. May reference Kafka producer retry as
+  the trigger.
