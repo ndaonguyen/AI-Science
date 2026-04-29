@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bug Memory</title>
+  <!-- ?v= cache-busters: bump the numbers when you push CSS/JS changes
+       if your browser is being stubborn about reload. The css and js are
+       served as static files from wwwroot by ASP.NET; default cache
+       headers are short but not zero. Same pattern as DistributedDebugger
+       uses for its v2/v3 pages. -->
+  <link rel="stylesheet" href="app.css?v=1">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>Bug memory</h1>
+      <p>Your personal RAG-powered bug knowledge base</p>
+    </header>
+
+    <!-- Tab strip. Active class is toggled by switchTab(name) in app.js.
+         The label on the Add button flips to 'Edit bug' while editing. -->
+    <div class="tabs">
+      <button class="tab active" data-tab="ask">Ask</button>
+      <button class="tab" data-tab="add" id="tab-add-label">Add bug</button>
+      <button class="tab" data-tab="all">All bugs</button>
+    </div>
+
+    <!-- ===== Ask tab ===== -->
+    <div class="tab-panel" data-panel="ask">
+      <div class="field">
+        <label class="label">Ask your bug memory</label>
+        <textarea id="askQuestion"
+                  placeholder="e.g. How did we fix the duplicate key error in content-media-service?"></textarea>
+        <div class="hint">Cmd/Ctrl + Enter to ask</div>
+      </div>
+      <div class="row end">
+        <button class="primary" id="askButton" disabled>Ask</button>
+      </div>
+      <div id="askError" class="status error" style="margin-top: 16px; display: none;"></div>
+      <div id="askResult" style="margin-top: 24px; display: none;">
+        <div class="answer-card">
+          <h3>Answer</h3>
+          <div class="answer-text" id="askAnswerText"></div>
+        </div>
+        <div class="section-label" id="askSourcesLabel" style="margin-bottom: 8px; display: none;"></div>
+        <div id="askSources"></div>
+      </div>
+    </div>
+
+    <!-- ===== Add tab =====
+         Has two sections: an Import panel that runs the AI extract on
+         pasted text, and the manual form below. The 'flash' class on the
+         form briefly highlights it after extract populates the fields. -->
+    <div class="tab-panel" data-panel="add" style="display: none;">
+      <div class="import-panel">
+        <div class="row between" style="align-items: flex-start;">
+          <div>
+            <h3>Import from chat or Slack thread</h3>
+            <div class="hint">Paste raw text — AI will extract title, tags, context, root cause, and solution.</div>
+          </div>
+          <button class="small" id="importToggle">Show</button>
+        </div>
+        <div id="importBody" style="display: none;">
+          <textarea id="importText"
+                    placeholder="Paste a Slack thread, error log, or chat conversation..."
+                    style="min-height: 140px; margin-top: 10px;"></textarea>
+          <div class="row between" style="margin-top: 8px;">
+            <span class="status" id="importStatus"></span>
+            <div class="row">
+              <button class="small" id="importClear">Clear</button>
+              <button id="importExtract">Extract fields</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div id="addForm">
+        <div class="field">
+          <label class="label">Title</label>
+          <input id="fieldTitle" placeholder="Short summary of the bug">
+        </div>
+        <div class="field">
+          <label class="label">Tags <span style="color: var(--text-faint); font-weight: 400;">(comma-separated)</span></label>
+          <input id="fieldTags" placeholder="content-media-service, kafka, opensearch">
+        </div>
+        <div class="field">
+          <label class="label">Context</label>
+          <textarea id="fieldContext"
+                    placeholder="What were you doing? Which service, environment, conditions?"></textarea>
+        </div>
+        <div class="field">
+          <label class="label">Root cause</label>
+          <textarea id="fieldRootCause"
+                    placeholder="Why did this bug happen?"></textarea>
+        </div>
+        <div class="field">
+          <label class="label">Solution</label>
+          <textarea id="fieldSolution"
+                    placeholder="How was it fixed? Code change, config, workaround?"></textarea>
+        </div>
+      </div>
+
+      <div class="row end" style="gap: 8px; margin-top: 8px;">
+        <span class="status" id="saveStatus" style="margin-right: auto;"></span>
+        <button id="cancelEdit" style="display: none;">Cancel</button>
+        <button id="clearForm">Clear</button>
+        <button class="primary" id="saveButton">Save bug</button>
+      </div>
+    </div>
+
+    <!-- ===== All bugs tab ===== -->
+    <div class="tab-panel" data-panel="all" style="display: none;">
+      <div class="row" style="margin-bottom: 16px;">
+        <input id="filterText" placeholder="Filter by tag or text..." style="flex: 1;">
+        <button id="refreshList">Refresh</button>
+      </div>
+      <div id="allList"></div>
+    </div>
+  </div>
+
+  <script src="app.js?v=1"></script>
+</body>
+</html>
