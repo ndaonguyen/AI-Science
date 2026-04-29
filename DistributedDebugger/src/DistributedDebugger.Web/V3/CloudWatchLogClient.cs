@@ -85,27 +85,44 @@ public sealed class CloudWatchLogClient : IDisposable
 
         var results = new List<LogRecord>();
         var pageCount = 0;
-        do
+        try
         {
-            var response = await client.FilterLogEventsAsync(request, ct);
-            pageCount++;
-            foreach (var ev in response.Events)
+            do
             {
-                results.Add(new LogRecord(
-                    Service: service,
-                    LogGroup: logGroup,
-                    Timestamp: DateTimeOffset.FromUnixTimeMilliseconds(ev.Timestamp),
-                    Message: ev.Message ?? "",
-                    EventId: ev.EventId));
-                if (results.Count >= limit)
+                var response = await client.FilterLogEventsAsync(request, ct);
+                pageCount++;
+                foreach (var ev in response.Events)
                 {
-                    Console.Error.WriteLine(
-                        $"[v3/cw] hit limit={limit} after {pageCount} page(s); aborting pagination");
-                    return results;
+                    results.Add(new LogRecord(
+                        Service: service,
+                        LogGroup: logGroup,
+                        Timestamp: DateTimeOffset.FromUnixTimeMilliseconds(ev.Timestamp),
+                        Message: ev.Message ?? "",
+                        EventId: ev.EventId));
+                    if (results.Count >= limit)
+                    {
+                        Console.Error.WriteLine(
+                            $"[v3/cw] hit limit={limit} after {pageCount} page(s); aborting pagination");
+                        return results;
+                    }
                 }
-            }
-            request.NextToken = response.NextToken;
-        } while (!string.IsNullOrEmpty(request.NextToken));
+                request.NextToken = response.NextToken;
+            } while (!string.IsNullOrEmpty(request.NextToken));
+        }
+        catch (Amazon.CloudWatchLogs.Model.ResourceNotFoundException)
+        {
+            // CloudWatch's default message ("The specified log group does not
+            // exist") is technically correct but doesn't tell the user WHICH
+            // log group it tried — and the most likely cause (wrong env name
+            // in the dropdown) is invisible. Surface the actual path we
+            // computed and the most likely fixes so the user can self-serve.
+            throw new InvalidOperationException(
+                $"CloudWatch log group '{logGroup}' does not exist. " +
+                $"Check that environment '{environment}' is one of: " +
+                $"{string.Join(", ", DistributedDebugger.Tools.CloudWatch.ServiceLogGroupResolver.KnownEnvironments)}, " +
+                $"and that service '{service}' actually deploys to that environment. " +
+                $"Also verify the AWS profile resolved for this environment has access to the right account.");
+        }
 
         Console.Error.WriteLine(
             $"[v3/cw] done → {results.Count} events across {pageCount} page(s)");
