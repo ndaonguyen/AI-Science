@@ -41,10 +41,14 @@
         </label>
         <label>Environment
           <select id="environment">
-            <option value="dev">dev</option>
+            <!-- Option values must match ServiceLogGroupResolver.KnownEnvironments
+                 EXACTLY — they're used to build the CloudWatch log group path
+                 as /{env}/ecs/{service}. The display labels are friendlier
+                 strings; the values are the real environment names. -->
+            <option value="test" selected>test</option>
             <option value="staging">staging</option>
-            <option value="live" selected>live</option>
-            <option value="live-ca">live-ca</option>
+            <option value="live">live</option>
+            <option value="live-ca-central-1">live (ca-central-1)</option>
           </select>
         </label>
         <label>Filter text (CloudWatch)
@@ -206,6 +210,6 @@
     </section>
   </main>
 
-  <script src="v2.js?v=15"></script>
+  <script src="v2.js?v=16"></script>
 </body>
 </html>
