@@ -1,0 +1,24 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+appsettings.Development.json
+appsettings.*.json
+!appsettings.json
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Local data
+backend/src/BugMemory.Api/data/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
