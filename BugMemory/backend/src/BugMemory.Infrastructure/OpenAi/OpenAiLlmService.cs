@@ -52,7 +52,7 @@ public sealed class OpenAiLlmService : ILlmService
             Temperature: 0.2);
 
         var response = await _http.PostAsJsonAsync("v1/chat/completions", request, ct);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessOrThrowWithBodyAsync("OpenAI", ct);
         var payload = await response.Content.ReadFromJsonAsync<ChatResponse>(cancellationToken: ct)
                       ?? throw new InvalidOperationException("Empty chat response");
 
@@ -104,7 +104,7 @@ public sealed class OpenAiLlmService : ILlmService
             Temperature: 0.3);
 
         var response = await _http.PostAsJsonAsync("v1/chat/completions", request, ct);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessOrThrowWithBodyAsync("OpenAI", ct);
         var payload = await response.Content.ReadFromJsonAsync<ChatResponse>(cancellationToken: ct)
                       ?? throw new InvalidOperationException("Empty chat response");
 

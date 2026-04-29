@@ -37,7 +37,7 @@ public sealed class OpenAiEmbeddingService : IEmbeddingService
     {
         var request = new EmbeddingRequest(_options.EmbeddingModel, texts);
         var response = await _http.PostAsJsonAsync("v1/embeddings", request, ct);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessOrThrowWithBodyAsync("OpenAI", ct);
         var payload = await response.Content.ReadFromJsonAsync<EmbeddingResponse>(cancellationToken: ct)
                       ?? throw new InvalidOperationException("Empty embedding response");
 
