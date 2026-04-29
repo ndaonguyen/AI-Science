@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>BugMemory.Eval</RootNamespace>
+    <AssemblyName>BugMemory.Eval</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The harness loads cases from YAML and (for the answer grader) calls
+         OpenAI directly through the existing Infrastructure types. We don't
+         pull in the OpenAI SDK here because the LLM grader reuses the
+         existing OpenAiLlmService — same code path as the live API. -->
+    <PackageReference Include="YamlDotNet" Version="16.2.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\BugMemory.Application\BugMemory.Application.csproj" />
+    <ProjectReference Include="..\BugMemory.Domain\BugMemory.Domain.csproj" />
+    <ProjectReference Include="..\BugMemory.Infrastructure\BugMemory.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

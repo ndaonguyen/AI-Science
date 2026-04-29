@@ -1,0 +1,20 @@
+id: opensearch-filter-question
+description: |
+  Symptom-focused question about OpenSearch filter mismatch. Tests
+  whether the retriever can disambiguate between the OpenSearch bug
+  and the Mongo schema bug — both have a "field comes back wrong"
+  flavour but different systems and different fixes.
+
+question: |
+  My OpenSearch filter on lifeCycleStatus = Active returns nothing,
+  but I can see the docs are there. What's the gotcha?
+
+expectedBugIds:
+  - opensearch-mapping-mismatch
+
+answerCriteria: |
+  Names the analyser/keyword sub-field issue. Mentions the .keyword
+  fix or the keyword-typed mapping. May correctly point out that the
+  underlying cause is text analysis lower-casing the indexed value.
+  Should NOT suggest unrelated OpenSearch knobs (refresh interval,
+  index aliases, etc.) as the primary fix.

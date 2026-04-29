@@ -1,0 +1,21 @@
+id: schema-deserialization-question
+description: |
+  Mongo deserialization symptom phrased without the specific exception
+  type. Should retrieve mongo-assetid-deserialization. The harness
+  cares whether vague-but-related questions still hit the right bug —
+  not just exact-keyword matches.
+
+question: |
+  Activity load is throwing some kind of format error related to the
+  asset id on image components. What's going on?
+
+expectedBugIds:
+  - mongo-assetid-deserialization
+
+answerCriteria: |
+  Identifies the non-nullable Guid + null-in-document mismatch as the
+  root cause. Mentions the backfill + serializer override fix, or at
+  least one of those (partial credit acceptable here since the
+  combination is the full fix). Should NOT suggest schema migration
+  to nullable Guid as the recommended fix without acknowledging the
+  team chose the alternate path.
