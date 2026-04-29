@@ -41,7 +41,7 @@ The two extras beyond a vanilla RAG: the **extract** endpoint runs the same LLM 
 
 ### Prerequisites
 
-- .NET 8 SDK
+- .NET 9 SDK (or later — roll-forward to current LTS works fine)
 - Node.js 20+
 - Docker (for Qdrant)
 - An OpenAI API key
