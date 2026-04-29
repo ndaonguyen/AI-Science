@@ -11,10 +11,10 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
-    p.WithOrigins(builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? new[] { "http://localhost:5173" })
-     .AllowAnyHeader()
-     .AllowAnyMethod()));
+// CORS removed — the frontend is now served from wwwroot/ on the same
+// origin as the API, so cross-origin restrictions don't apply. If you
+// ever need to allow a separate origin (e.g. for a browser-based API
+// debugger), add AddCors + UseCors back here.
 
 var app = builder.Build();
 
@@ -24,7 +24,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseCors();
 app.UseExceptionHandler(errorApp => errorApp.Run(async ctx =>
 {
     var feature = ctx.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
@@ -33,6 +32,16 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async ctx =>
     ctx.Response.StatusCode = 500;
     await ctx.Response.WriteAsJsonAsync(new { error = "Internal server error", detail = feature?.Error.Message });
 }));
+
+// Serve the frontend from wwwroot/.
+//   - UseDefaultFiles maps GET / to /index.html (so opening
+//     http://localhost:5080 loads the SPA shell).
+//   - UseStaticFiles serves index.html, app.css, app.js, plus any other
+//     static asset that lands in wwwroot/.
+// These run BEFORE the API endpoints so /api/* still goes to the
+// Minimal API handlers below — wwwroot has no 'api' folder.
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 // Bootstrap Qdrant collection on startup. Fail-soft: if Qdrant isn't
 // running yet, log a warning and let the app start anyway. Note we do NOT

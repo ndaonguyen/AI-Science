@@ -12,14 +12,16 @@ backend/
 │   ├── BugMemory.Domain/          ← Entities, no dependencies
 │   ├── BugMemory.Application/     ← Use cases, abstractions, DTOs
 │   ├── BugMemory.Infrastructure/  ← OpenAI, Qdrant, JSON file repo
-│   └── BugMemory.Api/             ← Minimal API endpoints, DI wiring
+│   ├── BugMemory.Api/             ← Minimal API + static frontend (wwwroot/)
+│   └── BugMemory.Eval/            ← Eval harness (console app)
 └── tests/
     └── BugMemory.UnitTests/       ← xUnit + Moq + AwesomeAssertions
 
-frontend/   ← React + TypeScript + Vite
-
-docker-compose.yml  ← Qdrant
+eval/                              ← Seed corpus + cases for the harness
+docker-compose.yml                 ← Qdrant
 ```
+
+The frontend is plain HTML/CSS/JS in `BugMemory.Api/wwwroot/`, served by ASP.NET as static files alongside the API. One process, one port — the same pattern as DistributedDebugger.
 
 ### SOLID at a glance
 
@@ -42,7 +44,6 @@ The two extras beyond a vanilla RAG: the **extract** endpoint runs the same LLM 
 ### Prerequisites
 
 - .NET 9 SDK (or later — roll-forward to current LTS works fine)
-- Node.js 20+
 - Docker (for Qdrant)
 - An OpenAI API key
 
@@ -56,17 +57,16 @@ Qdrant runs on `localhost:6333`. Dashboard at `http://localhost:6333/dashboard`.
 
 ### 2. Configure secrets
 
-Create `backend/src/BugMemory.Api/appsettings.Development.json`:
+The repo has `appsettings.Development.json.example` as a template. Copy it
+to a real file (which is gitignored, so it never gets committed):
 
-```json
-{
-  "OpenAi": {
-    "ApiKey": "sk-..."
-  }
-}
+```bash
+cd backend/src/BugMemory.Api
+cp appsettings.Development.json.example appsettings.Development.json
+# then edit appsettings.Development.json and replace the placeholder with your real key
 ```
 
-Or use user secrets:
+Or use user secrets (keeps the secret out of the working tree entirely):
 
 ```bash
 cd backend/src/BugMemory.Api
@@ -74,33 +74,25 @@ dotnet user-secrets init
 dotnet user-secrets set "OpenAi:ApiKey" "sk-..."
 ```
 
-### 3. Run the backend
+### 3. Run the app
 
 ```bash
 cd backend
 dotnet run --project src/BugMemory.Api
 ```
 
-API listens on `http://localhost:5080`. Swagger at `/swagger`.
+Open `http://localhost:5080` in your browser. The frontend (Ask / Add /
+All tabs) and the API (`/api/*`) both live on this single port. Swagger
+is at `/swagger`.
 
-### 4. Run the frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Frontend on `http://localhost:5173`. Vite proxies `/api` to the backend.
-
-### 5. Run tests
+### 4. Run tests
 
 ```bash
 cd backend
 dotnet test
 ```
 
-### 6. Run the eval harness (optional)
+### 5. Run the eval harness (optional)
 
 The harness measures whether prompt or model changes are improving or
 regressing answer quality. Two graders run per case:

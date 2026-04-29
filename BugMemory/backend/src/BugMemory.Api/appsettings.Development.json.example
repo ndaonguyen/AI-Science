@@ -1,0 +1,14 @@
+{
+  "_comment": [
+    "Copy this file to appsettings.Development.json (NOT committed) and fill",
+    "in your real OpenAI API key. Anything you add here overrides the same",
+    "keys in appsettings.json at runtime in the Development environment.",
+    "",
+    "Alternative: 'dotnet user-secrets set OpenAi:ApiKey sk-...' from this",
+    "folder, which is preferred because the secret never lives in the",
+    "repo's working tree at all."
+  ],
+  "OpenAi": {
+    "ApiKey": "sk-REPLACE_WITH_YOUR_REAL_OPENAI_KEY"
+  }
+}
