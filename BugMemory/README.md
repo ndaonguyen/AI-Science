@@ -41,7 +41,7 @@ The two extras beyond a vanilla RAG: the **extract** endpoint runs the same LLM 
 
 ### Prerequisites
 
-- .NET 8 SDK
+- .NET 9 SDK (or later — roll-forward to current LTS works fine)
 - Node.js 20+
 - Docker (for Qdrant)
 - An OpenAI API key
@@ -99,6 +99,39 @@ Frontend on `http://localhost:5173`. Vite proxies `/api` to the backend.
 cd backend
 dotnet test
 ```
+
+### 6. Run the eval harness (optional)
+
+The harness measures whether prompt or model changes are improving or
+regressing answer quality. Two graders run per case:
+
+- **Retrieval grader** (deterministic): does the right past bug appear
+  in top-K? Computes precision and recall.
+- **Answer grader** (LLM-as-judge using gpt-4o): does the generated
+  answer meet the case's stated criteria?
+
+Run all configs (baseline / cheap-model / narrow-retrieval) over the
+case suite:
+
+```bash
+cd backend
+dotnet run --project src/BugMemory.Eval
+```
+
+Or pick specific configs:
+
+```bash
+dotnet run --project src/BugMemory.Eval -- \
+  --config baseline --config cheap-model
+```
+
+The harness uses a SEPARATE Qdrant collection (`bug_memories_eval`)
+and a separate JSON file under your OS temp dir, so synthetic eval
+cases never pollute your real bug-memories. The collection is wiped
+and re-seeded at the start of each run for reproducibility.
+
+Cases live in `eval/cases/*.yaml` — one file per case. Add new cases by
+copying an existing file and editing. The seed corpus is `eval/seed-bugs.yaml`.
 
 ## API endpoints
 

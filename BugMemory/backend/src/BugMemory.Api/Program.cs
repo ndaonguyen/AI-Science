@@ -34,7 +34,13 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async ctx =>
     await ctx.Response.WriteAsJsonAsync(new { error = "Internal server error", detail = feature?.Error.Message });
 }));
 
-// Bootstrap Qdrant collection on startup
+// Bootstrap Qdrant collection on startup. Fail-soft: if Qdrant isn't
+// running yet, log a warning and let the app start anyway. Note we do NOT
+// retry on first use — the next /api/bugs POST or /api/ask call will try
+// to talk to Qdrant directly and fail with a clear "Qdrant returned ..."
+// error from the HTTP helper. The startup attempt is best-effort init,
+// not a circuit breaker. If you see this warning, the most common cause
+// is forgetting to run `docker compose up -d` before starting the API.
 using (var scope = app.Services.CreateScope())
 {
     var vectorStore = scope.ServiceProvider.GetRequiredService<IVectorStore>();
@@ -45,7 +51,10 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogWarning(ex, "Could not initialize vector collection on startup — will retry on first use");
+        logger.LogWarning(ex,
+            "Could not initialize Qdrant collection on startup. " +
+            "The API will start anyway, but bug-create and ask requests will " +
+            "fail until Qdrant is reachable. Did you run `docker compose up -d`?");
     }
 }
 

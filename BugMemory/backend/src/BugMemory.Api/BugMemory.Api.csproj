@@ -1,11 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <UserSecretsId>ac746a1c-fb2c-47fd-8c7d-ab768de2b388</UserSecretsId>
-  </PropertyGroup>
+<Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <ProjectReference Include="..\BugMemory.Application\BugMemory.Application.csproj" />
     <ProjectReference Include="..\BugMemory.Infrastructure\BugMemory.Infrastructure.csproj" />

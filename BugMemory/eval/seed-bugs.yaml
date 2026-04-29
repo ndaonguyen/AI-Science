@@ -1,0 +1,100 @@
+# Synthetic seed corpus for the BugMemory eval harness.
+# These get indexed into a SEPARATE Qdrant collection ("bug_memories_eval")
+# at the start of every harness run — never touches your real
+# "bug_memories" data.
+#
+# Each bug has a stable string id (kafka-retry-dup-key, etc) that
+# eval cases reference via ExpectedBugIds. The id-to-runtime-Guid
+# mapping is rebuilt every run.
+#
+# Coverage: distinct topics so retrieval has a clean signal — if two
+# bugs are too similar, the retriever will surface both even when only
+# one is the real match, and the harness will think retrieval is failing
+# when actually the corpus is just ambiguous. Five distinct domains
+# (Kafka, Mongo, OpenSearch, ECS, AWS auth) gives clear separation.
+
+bugs:
+  - id: kafka-retry-dup-key
+    title: Kafka producer retry causing duplicate-key violation in Mongo upsert
+    tags: [kafka, mongodb, idempotency, producer]
+    context: |
+      content-search-service consumed activity-published events and
+      tried to insert into the projection collection. Under load, the
+      producer would occasionally retry a publish, leading to two
+      consume attempts of the same logical event with subtly different
+      timestamps. The second insert hit a unique-index violation.
+    rootCause: |
+      No idempotency key applied to the upsert. The consumer treated
+      each delivery as a new write rather than an idempotent state
+      replication.
+    solution: |
+      Switched from insert to upsert keyed on (eventId, version).
+      Added a unique index on the same pair so duplicate retries
+      become no-ops at the database level.
+
+  - id: mongo-assetid-deserialization
+    title: ImageComponentModel.assetId deserialization failure on null
+    tags: [mongodb, dotnet, deserialization, schema]
+    context: |
+      authoring-service started throwing FormatException on activity
+      load. Stack trace pointed at AssetId property of
+      ImageComponentModel inside ComponentBlockModel.components[].
+    rootCause: |
+      AssetId was declared as a non-nullable Guid in the C# model, but
+      historic documents in the blocks collection had assetId stored
+      as null (introduced before the field became required).
+    solution: |
+      Two-pronged: backfilled affected documents with a default placeholder
+      assetId, and added a Bson serializer override so null reads map
+      to Guid.Empty instead of throwing.
+
+  - id: opensearch-mapping-mismatch
+    title: OpenSearch term query returning empty for valid lifeCycleStatus
+    tags: [opensearch, mapping, indexing]
+    context: |
+      Filtering activities by lifeCycleStatus = "Active" via term query
+      returned zero documents, even though the same docs were visible
+      via _doc fetch.
+    rootCause: |
+      The lifeCycleStatus field had been re-indexed without a keyword
+      sub-field. Term queries against the analysed text variant matched
+      "active" (lowercased by the analyser) but not the case-sensitive
+      "Active" sent in the query.
+    solution: |
+      Re-mapped the field with type keyword and reindexed. Switched
+      query to use the .keyword sub-field for any filter that compares
+      identifier-like values.
+
+  - id: ecs-task-oom
+    title: ECS task killed with exit code 137 under load (OOM)
+    tags: [ecs, aws, memory, dotnet]
+    context: |
+      Production task in content-search-service silently restarted
+      every ~6 hours under regular traffic. CloudWatch container insights
+      showed memory climbing to the task limit, then exit code 137.
+    rootCause: |
+      Unbounded in-memory cache of recently-projected documents — the
+      cache had no eviction policy and held references to the full
+      activity tree, preventing GC. Slow leak rather than spike.
+    solution: |
+      Replaced the manual dictionary cache with MemoryCache configured
+      with a sliding 15-minute expiration and a size limit. Memory now
+      stabilises at ~350MB rather than climbing.
+
+  - id: aws-sso-token-expired
+    title: aws sso token expiring mid-investigation breaks CloudWatch queries
+    tags: [aws, sso, auth, tooling]
+    context: |
+      During a long debugging session, CloudWatch log queries via the
+      AWS SDK started failing with InvalidIdentityTokenException
+      partway through, even though earlier queries in the same session
+      had worked.
+    rootCause: |
+      AWS SSO tokens expire after 8 hours by default. The SDK doesn't
+      refresh them automatically — it just starts failing once the
+      token is past TTL.
+    solution: |
+      Documented the expiry behaviour in the team runbook. Added a
+      pre-flight check to the local CloudWatch tool that runs
+      `aws sts get-caller-identity` and prompts to re-login if it
+      fails before kicking off long-running queries.

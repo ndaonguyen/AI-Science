@@ -39,7 +39,7 @@ public sealed class QdrantVectorStore : IVectorStore
         }
         if (existsResponse.StatusCode != HttpStatusCode.NotFound)
         {
-            existsResponse.EnsureSuccessStatusCode();
+            await existsResponse.EnsureSuccessOrThrowWithBodyAsync("Qdrant", ct);
         }
 
         var createPayload = new
@@ -47,7 +47,7 @@ public sealed class QdrantVectorStore : IVectorStore
             vectors = new { size = _options.VectorSize, distance = _options.Distance },
         };
         var create = await _http.PutAsJsonAsync($"collections/{_options.CollectionName}", createPayload, ct);
-        create.EnsureSuccessStatusCode();
+        await create.EnsureSuccessOrThrowWithBodyAsync("Qdrant", ct);
         _logger.LogInformation("Created Qdrant collection {Name}", _options.CollectionName);
     }
 
@@ -66,7 +66,7 @@ public sealed class QdrantVectorStore : IVectorStore
             },
         };
         var response = await _http.PutAsJsonAsync($"collections/{_options.CollectionName}/points?wait=true", body, ct);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessOrThrowWithBodyAsync("Qdrant", ct);
     }
 
     public async Task<IReadOnlyList<VectorSearchHit>> SearchAsync(float[] queryEmbedding, int topK, CancellationToken ct)
@@ -78,7 +78,7 @@ public sealed class QdrantVectorStore : IVectorStore
             with_payload = true,
         };
         var response = await _http.PostAsJsonAsync($"collections/{_options.CollectionName}/points/search", body, ct);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessOrThrowWithBodyAsync("Qdrant", ct);
         var result = await response.Content.ReadFromJsonAsync<SearchResponse>(cancellationToken: ct);
         if (result?.Result is null) return Array.Empty<VectorSearchHit>();
 
@@ -97,7 +97,7 @@ public sealed class QdrantVectorStore : IVectorStore
     {
         var body = new { points = new[] { id.ToString() } };
         var response = await _http.PostAsJsonAsync($"collections/{_options.CollectionName}/points/delete?wait=true", body, ct);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessOrThrowWithBodyAsync("Qdrant", ct);
     }
 
     private sealed record SearchResponse(
