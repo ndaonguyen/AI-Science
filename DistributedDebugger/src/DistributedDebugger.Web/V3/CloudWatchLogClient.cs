@@ -4,6 +4,7 @@ using Amazon.CloudWatchLogs;
 using Amazon.CloudWatchLogs.Model;
 using Amazon.Runtime;
 using DistributedDebugger.Tools.CloudWatch;
+using InvalidOperationException = System.InvalidOperationException;
 
 namespace DistributedDebugger.Web.V3;
 
