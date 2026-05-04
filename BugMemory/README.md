@@ -138,6 +138,16 @@ copying an existing file and editing. The seed corpus is `eval/seed-bugs.yaml`.
 | `POST`   | `/api/ask`          | RAG: retrieve + generate grounded answer |
 | `POST`   | `/api/extract`      | Pull structured fields from raw text |
 
+## Slack capture (optional)
+
+A browser bookmarklet lets you turn an open Slack thread into a draft
+bug memory in one click. No Slack app required, no admin approval, no
+public hosting. See [`bookmarklet.md`](./bookmarklet.md) for install and
+use instructions.
+
+The flow: open a thread in `app.slack.com`, click the bookmark, review
+the LLM-extracted fields in BugMemory's Add tab, save.
+
 ## Swapping out providers
 
 Want to use Anthropic instead of OpenAI? Create `AnthropicLlmService : ILlmService`, register it in `InfrastructureServiceCollectionExtensions`. Same for embeddings (Voyage AI), vector store (pgvector), or persistence (Postgres). The Application and Domain layers don't change.

@@ -11,10 +11,20 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// CORS removed — the frontend is now served from wwwroot/ on the same
-// origin as the API, so cross-origin restrictions don't apply. If you
-// ever need to allow a separate origin (e.g. for a browser-based API
-// debugger), add AddCors + UseCors back here.
+// CORS narrowly scoped to the Slack bookmarklet flow. The frontend at
+// wwwroot/ is same-origin and doesn't need CORS at all; this exists
+// purely so a JS bookmarklet running on app.slack.com can POST to
+// /api/extract on http://localhost:5080. Listed origins are the
+// minimum that lets the bookmarklet work reliably across browsers
+// (some strip the .com TLD's exact host expectations differently).
+//
+// If you don't use the Slack bookmarklet, this is harmless — it only
+// permits cross-origin requests from the listed Slack origins, not
+// arbitrary callers.
+builder.Services.AddCors(o => o.AddPolicy("BookmarkletOrigins", p =>
+    p.WithOrigins("https://app.slack.com", "https://slack.com")
+     .WithMethods("POST", "OPTIONS")
+     .WithHeaders("Content-Type")));
 
 var app = builder.Build();
 
@@ -42,6 +52,11 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async ctx =>
 // Minimal API handlers below — wwwroot has no 'api' folder.
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+// CORS middleware. Only the endpoints that .RequireCors("BookmarkletOrigins")
+// will actually allow cross-origin — everything else stays same-origin.
+// Must run before endpoint routing for RequireCors to take effect.
+app.UseCors();
 
 // Bootstrap Qdrant collection on startup. Fail-soft: if Qdrant isn't
 // running yet, log a warning and let the app start anyway. Note we do NOT

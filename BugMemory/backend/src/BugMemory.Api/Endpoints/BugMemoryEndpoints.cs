@@ -82,6 +82,8 @@ public static class BugMemoryEndpoints
             {
                 return Results.BadRequest(new { error = ex.Message });
             }
-        });
+        }).RequireCors("BookmarkletOrigins");  // Allows the Slack bookmarklet (running on
+                                                // https://app.slack.com) to POST here. Other
+                                                // endpoints are same-origin only.
     }
 }

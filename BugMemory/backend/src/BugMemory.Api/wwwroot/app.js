@@ -467,6 +467,46 @@
     // Initial render of each tab so they have correct state on first show
     renderAskTab();
     renderAddTab();
+
+    // If the URL has ?prefill=<base64-json>, decode and pre-fill the Add
+    // tab. Used by the Slack bookmarklet (and anywhere else that wants
+    // to drop a user into a half-filled Add form). Format:
+    //   ?prefill=<base64( JSON.stringify({ title, tags, context,
+    //                                      rootCause, solution }) )>
+    // Tags can be either a string ("a, b, c") or an array (["a","b","c"]).
+    // Unknown fields are ignored. Bad base64 / bad JSON is logged and
+    // otherwise ignored — the user just lands on a normal blank Add form.
+    tryPrefillFromUrl();
+  }
+
+  function tryPrefillFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('prefill');
+    if (!raw) return;
+    let parsed;
+    try {
+      // atob handles standard base64; replace URL-safe chars first so
+      // the bookmarklet can use either encoding.
+      const normalised = raw.replace(/-/g, '+').replace(/_/g, '/');
+      parsed = JSON.parse(decodeURIComponent(escape(atob(normalised))));
+    } catch (e) {
+      console.warn('Bad ?prefill payload, ignoring:', e);
+      return;
+    }
+    if (parsed && typeof parsed === 'object') {
+      $('fieldTitle').value     = String(parsed.title     || '');
+      $('fieldTags').value      = Array.isArray(parsed.tags)
+        ? parsed.tags.join(', ')
+        : String(parsed.tags || '');
+      $('fieldContext').value   = String(parsed.context   || '');
+      $('fieldRootCause').value = String(parsed.rootCause || '');
+      $('fieldSolution').value  = String(parsed.solution  || '');
+      switchTab('add');
+      // Clear the query string so a refresh doesn't re-prefill (which
+      // would clobber any edits the user has made since landing).
+      // history.replaceState avoids adding a navigation entry.
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }
 
   if (document.readyState === 'loading') {
