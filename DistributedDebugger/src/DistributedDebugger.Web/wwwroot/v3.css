@@ -120,7 +120,7 @@ body {
   font-size: 11px;
   margin: 0;
 }
-.quick-ranges { display: flex; gap: 4px; margin-top: 4px; }
+.quick-ranges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .chip {
   font-size: 11px;
   padding: 2px 8px;

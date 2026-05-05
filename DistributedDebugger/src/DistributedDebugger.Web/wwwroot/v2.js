@@ -168,7 +168,7 @@ const $evidenceFormCancel   = $('evidenceFormCancel');
 // ---- helpers ----
 function setRangeFromPreset(p) {
   const now = new Date();
-  const map = { '15m': 15, '1h': 60, '6h': 360, '24h': 1440 };
+  const map = { '2m': 2, '3m': 3, '5m': 5, '10m': 10, '15m': 15, '1h': 60, '6h': 360, '24h': 1440 };
   const minutes = map[p] ?? 60;
   const start = new Date(now.getTime() - minutes * 60_000);
   // datetime-local needs YYYY-MM-DDTHH:MM:SS in *local* time, but we want
