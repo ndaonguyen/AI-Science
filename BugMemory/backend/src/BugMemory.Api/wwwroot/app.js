@@ -1,4 +1,4 @@
-// Bug Memory — vanilla JS frontend.
+// Memory — vanilla JS frontend.
 //
 // Structure: one global `state` object, render functions per tab, an api
 // object for the fetch wrapper. No framework. Mirrors the DistributedDebugger
@@ -17,12 +17,12 @@
 
   const state = {
     tab: 'ask',                 // 'ask' | 'add' | 'all'
-    editing: null,              // BugMemory | null — non-null = editing existing
+    editing: null,              // Entry | null — non-null = editing existing
     formKind: 'Bug',            // 'Bug' | 'Feature' — selected kind on Add form
-    bugs: [],                   // BugMemory[] — populated when All tab is opened
-    bugsLoaded: false,          // false until first All-tab fetch completes
-    bugsLoading: false,
-    bugsError: null,
+    entries: [],                // Entry[] — populated when All tab is opened
+    entriesLoaded: false,       // false until first All-tab fetch completes
+    entriesLoading: false,
+    entriesError: null,
     listKind: 'all',            // 'all' | 'Bug' | 'Feature' — All-tab kind filter
     askLoading: false,
     askResponse: null,          // RagResponse | null
@@ -34,9 +34,10 @@
   };
 
   // ================== api ==================
-  // Plain fetch wrapper. Same shape as the old TS client. Throws on non-2xx
-  // with the response body in the message — backend's PR #46 surfaces
-  // OpenAI/Qdrant error bodies, so we want to display those verbatim.
+  // Plain fetch wrapper. Throws on non-2xx with the response body in the
+  // message — backend surfaces OpenAI/Qdrant error bodies, so we want to
+  // display those verbatim. The URL still says /api/bugs even though it
+  // serves both kinds; the rename was deferred to keep the diff bounded.
 
   const api = {
     list:    (kind)          => req(kind && kind !== 'all' ? `/api/bugs?kind=${kind}` : '/api/bugs'),
@@ -93,9 +94,8 @@
   // ================== tab switching ==================
 
   function switchTab(name) {
-    // Match the React App.tsx behaviour: leaving the Add tab while
-    // editing-an-existing-bug clears the editing state. Keeps the edit
-    // session bounded to that tab.
+    // Leaving the Add tab while editing-an-existing-entry clears the
+    // editing state. Keeps the edit session bounded to that tab.
     if (state.tab === 'add' && name !== 'add' && state.editing) {
       state.editing = null;
       renderAddTab();
@@ -113,9 +113,9 @@
 
     // First time the user opens All, fetch the list. Subsequent visits
     // reuse the cached list — refreshing requires the explicit Refresh
-    // button or a save (which clears the cache via handleSaved).
-    if (name === 'all' && !state.bugsLoaded && !state.bugsLoading) {
-      loadAllBugs();
+    // button or a save (which clears the cache).
+    if (name === 'all' && !state.entriesLoaded && !state.entriesLoading) {
+      loadAllEntries();
     }
   }
 
@@ -163,7 +163,7 @@
         label.style.display = '';
         label.textContent = `Sources (${cites.length})`;
         sourcesEl.innerHTML = cites
-          .map(c => renderBugCardHtml(c.entry, { score: c.score }))
+          .map(c => renderEntryCardHtml(c.entry, { score: c.score }))
           .join('');
       } else {
         label.style.display = 'none';
@@ -199,18 +199,18 @@
     }
   }
 
-  function setEditing(bug) {
-    state.editing = bug;
-    if (bug) {
-      const kind = bug.kind || 'Bug';
+  function setEditing(entry) {
+    state.editing = entry;
+    if (entry) {
+      const kind = entry.kind || 'Bug';
       setFormKind(kind);
-      $('fieldTitle').value     = bug.title || '';
-      $('fieldTags').value      = (bug.tags || []).join(', ');
-      $('fieldServices').value  = (bug.affectedServices || []).join(', ');
-      $('fieldContext').value   = bug.context || '';
-      $('fieldRootCause').value = bug.rootCause || '';
-      $('fieldSolution').value  = bug.solution || '';
-      $('fieldLinks').value     = (bug.links || []).join('\n');
+      $('fieldTitle').value     = entry.title || '';
+      $('fieldTags').value      = (entry.tags || []).join(', ');
+      $('fieldServices').value  = (entry.affectedServices || []).join(', ');
+      $('fieldContext').value   = entry.context || '';
+      $('fieldRootCause').value = entry.rootCause || '';
+      $('fieldSolution').value  = entry.solution || '';
+      $('fieldLinks').value     = (entry.links || []).join('\n');
     }
     renderAddTab();
   }
@@ -273,7 +273,6 @@
       $('fieldSolution').value  = result.solution  || '';
 
       // Brief flash on the form to draw the eye to the new content.
-      // Same animation as the React app — class + setTimeout.
       const formEl = $('addForm');
       formEl.classList.add('flash');
       setTimeout(() => formEl.classList.remove('flash'), 1400);
@@ -328,16 +327,13 @@
       state.saveStatus = { type: 'success', msg: state.editing ? 'Updated' : 'Saved' };
       // After a successful save: clear form, reset edit state, mark
       // the cached All-tab list as stale so it refetches next visit.
-      // If the user is currently ON the All tab somehow (rare — saving
-      // happens from Add — but possible after switching mid-save),
-      // refetch immediately so they see the new state.
       clearForm();
       $('importText').value = '';
       state.importStatus = { type: 'idle', msg: '' };
       state.editing = null;
-      state.bugsLoaded = false;
+      state.entriesLoaded = false;
       if (state.tab === 'all') {
-        loadAllBugs();
+        loadAllEntries();
       }
       renderAddTab();
       setTimeout(() => {
@@ -352,17 +348,17 @@
 
   // ================== All tab ==================
 
-  async function loadAllBugs() {
-    state.bugsLoading = true;
-    state.bugsError = null;
+  async function loadAllEntries() {
+    state.entriesLoading = true;
+    state.entriesError = null;
     renderAllTab();
     try {
-      state.bugs = await api.list(state.listKind);
-      state.bugsLoaded = true;
+      state.entries = await api.list(state.listKind);
+      state.entriesLoaded = true;
     } catch (e) {
-      state.bugsError = e.message || 'Failed to load';
+      state.entriesError = e.message || 'Failed to load';
     } finally {
-      state.bugsLoading = false;
+      state.entriesLoading = false;
       renderAllTab();
     }
   }
@@ -372,17 +368,17 @@
     document.querySelectorAll('.kind-option[data-list-kind]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.listKind === kind);
     });
-    state.bugsLoaded = false;
-    loadAllBugs();
+    state.entriesLoaded = false;
+    loadAllEntries();
   }
 
   async function handleDelete(id) {
-    const bug = state.bugs.find(b => b.id === id);
-    if (!bug) return;
-    if (!confirm(`Delete "${bug.title}"?`)) return;
+    const entry = state.entries.find(e => e.id === id);
+    if (!entry) return;
+    if (!confirm(`Delete "${entry.title}"?`)) return;
     try {
       await api.remove(id);
-      state.bugs = state.bugs.filter(b => b.id !== id);
+      state.entries = state.entries.filter(e => e.id !== id);
       renderAllTab();
     } catch (e) {
       alert(e.message || 'Delete failed');
@@ -390,45 +386,45 @@
   }
 
   function handleEdit(id) {
-    const bug = state.bugs.find(b => b.id === id);
-    if (!bug) return;
-    setEditing(bug);
+    const entry = state.entries.find(e => e.id === id);
+    if (!entry) return;
+    setEditing(entry);
     switchTab('add');
   }
 
   function renderAllTab() {
     const container = $('allList');
 
-    if (state.bugsLoading) {
+    if (state.entriesLoading) {
       container.innerHTML = '<div class="empty">Loading...</div>';
       return;
     }
-    if (state.bugsError) {
-      container.innerHTML = `<div class="status error">${escape(state.bugsError)}</div>`;
+    if (state.entriesError) {
+      container.innerHTML = `<div class="status error">${escape(state.entriesError)}</div>`;
       return;
     }
 
     const f = state.filter.trim().toLowerCase();
     const filtered = f
-      ? state.bugs.filter(b => {
+      ? state.entries.filter(e => {
           const haystack = [
-            b.title,
-            (b.tags || []).join(' '),
-            (b.affectedServices || []).join(' '),
-            b.context, b.rootCause, b.solution,
+            e.title,
+            (e.tags || []).join(' '),
+            (e.affectedServices || []).join(' '),
+            e.context, e.rootCause, e.solution,
           ].join(' ').toLowerCase();
           return haystack.includes(f);
         })
-      : state.bugs;
+      : state.entries;
 
     if (filtered.length === 0) {
-      const msg = state.bugs.length === 0 ? 'Nothing saved yet.' : 'No entries match the filter.';
+      const msg = state.entries.length === 0 ? 'Nothing saved yet.' : 'No entries match the filter.';
       container.innerHTML = `<div class="empty">${msg}</div>`;
       return;
     }
 
     container.innerHTML = filtered
-      .map(bug => renderBugCardHtml(bug, { withActions: true }))
+      .map(entry => renderEntryCardHtml(entry, { withActions: true }))
       .join('');
 
     // Wire up Edit / Delete buttons after render. Using event delegation
@@ -442,34 +438,34 @@
     });
   }
 
-  // ================== BugCard renderer (returns HTML) ==================
+  // ================== Card renderer (returns HTML) ==================
   // Used by both the Ask tab (citation cards, no actions) and the All tab
   // (with Edit/Delete buttons). The `score` option adds a "X% match" pill
   // for citation contexts.
 
-  function renderBugCardHtml(bug, opts) {
+  function renderEntryCardHtml(entry, opts) {
     opts = opts || {};
-    const kind = bug.kind || 'Bug';
+    const kind = entry.kind || 'Bug';
     const labels = labelsFor(kind);
     const kindBadge = `<span class="tag kind kind-${kind.toLowerCase()}">${kind}</span>`;
-    const tags = (bug.tags || []).map(t => `<span class="tag">${escape(t)}</span>`).join('');
+    const tags = (entry.tags || []).map(t => `<span class="tag">${escape(t)}</span>`).join('');
     const scoreTag = (opts.score != null)
       ? `<span class="tag score">${Math.round(opts.score * 100)}% match</span>`
       : '';
 
     const sections = [];
-    const services = bug.affectedServices || [];
+    const services = entry.affectedServices || [];
     if (services.length > 0) sections.push(section('Affected services', services.join(', ')));
-    if (bug.context)   sections.push(section('Context',          bug.context));
-    if (bug.rootCause) sections.push(section(labels.rootCause,   bug.rootCause));
-    if (bug.solution)  sections.push(section(labels.solution,    bug.solution));
-    const links = bug.links || [];
+    if (entry.context)   sections.push(section('Context',          entry.context));
+    if (entry.rootCause) sections.push(section(labels.rootCause,   entry.rootCause));
+    if (entry.solution)  sections.push(section(labels.solution,    entry.solution));
+    const links = entry.links || [];
     if (links.length > 0) sections.push(linksSection(links));
 
     const actions = opts.withActions
       ? `<div class="actions">
-           <button class="small" data-action="edit"   data-id="${escape(bug.id)}">Edit</button>
-           <button class="small danger" data-action="delete" data-id="${escape(bug.id)}">Delete</button>
+           <button class="small" data-action="edit"   data-id="${escape(entry.id)}">Edit</button>
+           <button class="small danger" data-action="delete" data-id="${escape(entry.id)}">Delete</button>
          </div>`
       : '';
 
@@ -477,10 +473,10 @@
       <div class="card">
         <div class="card-header">
           <div style="flex: 1; min-width: 0;">
-            <h3 class="card-title">${escape(bug.title)}</h3>
+            <h3 class="card-title">${escape(entry.title)}</h3>
             <div class="tags">${kindBadge}${tags}${scoreTag}</div>
           </div>
-          <span class="card-meta">${escape(formatDate(bug.updatedAt))}</span>
+          <span class="card-meta">${escape(formatDate(entry.updatedAt))}</span>
         </div>
         ${sections.join('')}
         ${actions}
@@ -556,7 +552,7 @@
       state.filter = e.target.value;
       renderAllTab();
     });
-    $('refreshList').addEventListener('click', loadAllBugs);
+    $('refreshList').addEventListener('click', loadAllEntries);
 
     // Initial form-kind state
     setFormKind('Bug');

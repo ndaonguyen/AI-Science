@@ -8,7 +8,10 @@ public static class BugMemoryEndpoints
 {
     public static void MapBugMemoryEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/bugs").WithTags("Bug Memory");
+        // URL stays /api/bugs (rename would break clients), but the Swagger
+        // tag is generic "Memories" — these endpoints serve both bug and
+        // feature kinds via the Kind discriminator.
+        var group = app.MapGroup("/api/bugs").WithTags("Memories");
 
         group.MapGet("", async (MemoryKind? kind, ListBugMemoriesUseCase useCase, CancellationToken ct) =>
             Results.Ok(await useCase.ExecuteAsync(kind, ct)));

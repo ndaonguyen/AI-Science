@@ -3,7 +3,9 @@
     "allow": [
       "Bash(dotnet build *)",
       "Bash(dotnet *)",
-      "PowerShell(Get-Process *)"
+      "PowerShell(Get-Process *)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(Get-Command *)"
     ]
   }
 }

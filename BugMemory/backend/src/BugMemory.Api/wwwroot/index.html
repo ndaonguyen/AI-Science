@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bug Memory</title>
+  <title>Memory</title>
   <!-- ?v= cache-busters: bump the numbers when you push CSS/JS changes
        if your browser is being stubborn about reload. The css and js are
        served as static files from wwwroot by ASP.NET; default cache
@@ -14,8 +14,8 @@
 <body>
   <div class="app">
     <header class="header">
-      <h1>Bug memory</h1>
-      <p>Your personal RAG-powered bug & feature knowledge base</p>
+      <h1>Memory</h1>
+      <p>Your personal RAG-powered knowledge base</p>
     </header>
 
     <!-- Tab strip. Active class is toggled by switchTab(name) in app.js.
@@ -29,7 +29,7 @@
     <!-- ===== Ask tab ===== -->
     <div class="tab-panel" data-panel="ask">
       <div class="field">
-        <label class="label">Ask your memory</label>
+        <label class="label">Ask</label>
         <textarea id="askQuestion"
                   placeholder="e.g. Why did we add MetadataJson to the authoring service?"></textarea>
         <div class="hint">Cmd/Ctrl + Enter to ask</div>
@@ -142,6 +142,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=2"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>
