@@ -1,6 +1,7 @@
 using BugMemory.Application.Abstractions;
 using BugMemory.Application.Dtos;
 using BugMemory.Application.Mapping;
+using BugMemory.Domain.Entities;
 
 namespace BugMemory.Application.UseCases;
 
@@ -10,10 +11,11 @@ public sealed class ListBugMemoriesUseCase
 
     public ListBugMemoriesUseCase(IBugMemoryRepository repository) => _repository = repository;
 
-    public async Task<IReadOnlyList<BugMemoryDto>> ExecuteAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<BugMemoryDto>> ExecuteAsync(MemoryKind? kind, CancellationToken ct)
     {
         var entries = await _repository.GetAllAsync(ct);
-        return entries.Select(e => e.ToDto()).ToList();
+        var filtered = kind is null ? entries : entries.Where(e => e.Kind == kind.Value);
+        return filtered.Select(e => e.ToDto()).ToList();
     }
 }
 

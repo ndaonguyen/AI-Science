@@ -240,6 +240,82 @@ button.small {
   font-weight: 500;
 }
 
+.tag.kind {
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-size: 11px;
+}
+
+.tag.kind-bug {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.tag.kind-feature {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.kind-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.kind-option {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.kind-option + .kind-option {
+  border-left: 1px solid var(--border);
+}
+
+.kind-option.active {
+  background: var(--text);
+  color: var(--bg);
+}
+
+.kind-option:hover:not(.active) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.link-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+}
+
+.link-list li {
+  margin-bottom: 2px;
+  word-break: break-all;
+}
+
+.link-list a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.link-list a:hover {
+  text-decoration: underline;
+}
+
+.link-list code {
+  background: var(--surface-2);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
 .section {
   margin-top: 12px;
   padding-top: 12px;

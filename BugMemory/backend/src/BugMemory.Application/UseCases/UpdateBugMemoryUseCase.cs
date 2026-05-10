@@ -1,16 +1,20 @@
 using BugMemory.Application.Abstractions;
 using BugMemory.Application.Dtos;
 using BugMemory.Application.Mapping;
+using BugMemory.Domain.Entities;
 
 namespace BugMemory.Application.UseCases;
 
 public sealed record UpdateBugMemoryCommand(
     Guid Id,
+    MemoryKind Kind,
     string Title,
     IReadOnlyList<string> Tags,
     string Context,
     string RootCause,
-    string Solution);
+    string Solution,
+    IReadOnlyList<string>? AffectedServices,
+    IReadOnlyList<string>? Links);
 
 public sealed class UpdateBugMemoryUseCase
 {
@@ -36,7 +40,16 @@ public sealed class UpdateBugMemoryUseCase
         var entry = await _repository.GetByIdAsync(command.Id, ct);
         if (entry is null) return null;
 
-        entry.Update(command.Title, command.Context, command.RootCause, command.Solution, command.Tags, _clock.UtcNow);
+        entry.Update(
+            command.Kind,
+            command.Title,
+            command.Context,
+            command.RootCause,
+            command.Solution,
+            command.Tags,
+            command.AffectedServices,
+            command.Links,
+            _clock.UtcNow);
         await _repository.UpdateAsync(entry, ct);
 
         var embedding = await _embeddings.EmbedAsync(entry.ToEmbeddingText(), ct);

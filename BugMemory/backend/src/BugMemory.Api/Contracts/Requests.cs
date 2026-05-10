@@ -1,18 +1,26 @@
+using BugMemory.Domain.Entities;
+
 namespace BugMemory.Api.Contracts;
 
 public sealed record CreateBugMemoryRequest(
+    MemoryKind? Kind,
     string Title,
     List<string> Tags,
     string Context,
     string RootCause,
-    string Solution);
+    string Solution,
+    List<string>? AffectedServices,
+    List<string>? Links);
 
 public sealed record UpdateBugMemoryRequest(
+    MemoryKind? Kind,
     string Title,
     List<string> Tags,
     string Context,
     string RootCause,
-    string Solution);
+    string Solution,
+    List<string>? AffectedServices,
+    List<string>? Links);
 
 public sealed record SearchRequest(string Query, int? TopK);
 

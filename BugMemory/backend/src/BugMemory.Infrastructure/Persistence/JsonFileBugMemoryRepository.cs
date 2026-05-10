@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using BugMemory.Application.Abstractions;
 using BugMemory.Domain.Entities;
 using Microsoft.Extensions.Options;
@@ -19,10 +20,23 @@ internal sealed record BugMemoryRecord(
     string Solution,
     List<string> Tags,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt)
+{
+    // Optional fields added later — older JSON files won't have them.
+    // Default Kind = Bug keeps existing data behaving as before.
+    public MemoryKind Kind { get; init; } = MemoryKind.Bug;
+    public List<string>? AffectedServices { get; init; }
+    public List<string>? Links { get; init; }
+}
 
 public sealed class JsonFileBugMemoryRepository : IBugMemoryRepository
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
     private readonly string _filePath;
     private readonly ConcurrentDictionary<Guid, BugMemoryEntry> _store = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -43,11 +57,22 @@ public sealed class JsonFileBugMemoryRepository : IBugMemoryRepository
             if (File.Exists(_filePath))
             {
                 await using var stream = File.OpenRead(_filePath);
-                var records = await JsonSerializer.DeserializeAsync<List<BugMemoryRecord>>(stream, cancellationToken: ct)
+                var records = await JsonSerializer.DeserializeAsync<List<BugMemoryRecord>>(stream, JsonOptions, ct)
                               ?? new List<BugMemoryRecord>();
                 foreach (var r in records)
                 {
-                    var entry = BugMemoryEntry.Hydrate(r.Id, r.Title, r.Context, r.RootCause, r.Solution, r.Tags, r.CreatedAt, r.UpdatedAt);
+                    var entry = BugMemoryEntry.Hydrate(
+                        r.Id,
+                        r.Kind,
+                        r.Title,
+                        r.Context,
+                        r.RootCause,
+                        r.Solution,
+                        r.Tags,
+                        r.AffectedServices,
+                        r.Links,
+                        r.CreatedAt,
+                        r.UpdatedAt);
                     _store[r.Id] = entry;
                 }
             }
@@ -62,12 +87,18 @@ public sealed class JsonFileBugMemoryRepository : IBugMemoryRepository
     private async Task PersistAsync(CancellationToken ct)
     {
         var records = _store.Values
-            .Select(e => new BugMemoryRecord(e.Id, e.Title, e.Context, e.RootCause, e.Solution, e.Tags.ToList(), e.CreatedAt, e.UpdatedAt))
+            .Select(e => new BugMemoryRecord(
+                e.Id, e.Title, e.Context, e.RootCause, e.Solution, e.Tags.ToList(), e.CreatedAt, e.UpdatedAt)
+            {
+                Kind = e.Kind,
+                AffectedServices = e.AffectedServices.ToList(),
+                Links = e.Links.ToList(),
+            })
             .ToList();
         var dir = Path.GetDirectoryName(_filePath);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         await using var stream = File.Create(_filePath);
-        await JsonSerializer.SerializeAsync(stream, records, new JsonSerializerOptions { WriteIndented = true }, ct);
+        await JsonSerializer.SerializeAsync(stream, records, JsonOptions, ct);
     }
 
     public async Task AddAsync(BugMemoryEntry entry, CancellationToken ct)

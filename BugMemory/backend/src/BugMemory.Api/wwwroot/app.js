@@ -18,10 +18,12 @@
   const state = {
     tab: 'ask',                 // 'ask' | 'add' | 'all'
     editing: null,              // BugMemory | null — non-null = editing existing
+    formKind: 'Bug',            // 'Bug' | 'Feature' — selected kind on Add form
     bugs: [],                   // BugMemory[] — populated when All tab is opened
     bugsLoaded: false,          // false until first All-tab fetch completes
     bugsLoading: false,
     bugsError: null,
+    listKind: 'all',            // 'all' | 'Bug' | 'Feature' — All-tab kind filter
     askLoading: false,
     askResponse: null,          // RagResponse | null
     askError: null,
@@ -37,7 +39,7 @@
   // OpenAI/Qdrant error bodies, so we want to display those verbatim.
 
   const api = {
-    list:    ()              => req('/api/bugs'),
+    list:    (kind)          => req(kind && kind !== 'all' ? `/api/bugs?kind=${kind}` : '/api/bugs'),
     get:     (id)            => req(`/api/bugs/${id}`),
     create:  (body)          => req('/api/bugs',     { method: 'POST',   body: JSON.stringify(body) }),
     update:  (id, body)      => req(`/api/bugs/${id}`, { method: 'PUT',  body: JSON.stringify(body) }),
@@ -78,6 +80,14 @@
     // type: 'idle' | 'loading' | 'error' | 'success'
     el.className = 'status' + (type === 'idle' ? '' : ' ' + type);
     el.textContent = msg || '';
+  }
+
+  // Field labels flip with kind. 'Why' / 'Decision' for features so the
+  // form reads as feature rationale, not a bug postmortem.
+  function labelsFor(kind) {
+    return kind === 'Feature'
+      ? { rootCause: 'Why',        solution: 'Decision' }
+      : { rootCause: 'Root cause', solution: 'Solution' };
   }
 
   // ================== tab switching ==================
@@ -166,32 +176,62 @@
 
   // ================== Add tab ==================
 
+  function setFormKind(kind) {
+    state.formKind = kind;
+    document.querySelectorAll('.kind-option[data-kind]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.kind === kind);
+    });
+    // Show/hide feature-only fields
+    document.querySelectorAll('.feature-only').forEach(el => {
+      el.style.display = kind === 'Feature' ? '' : 'none';
+    });
+    // Flip labels
+    const labels = labelsFor(kind);
+    $('labelRootCause').textContent = labels.rootCause;
+    $('labelSolution').textContent  = labels.solution;
+    // Adapt placeholders so the form reads like the chosen kind
+    if (kind === 'Feature') {
+      $('fieldRootCause').placeholder = 'Why was this needed? What problem did it solve?';
+      $('fieldSolution').placeholder  = 'What was decided / built?';
+    } else {
+      $('fieldRootCause').placeholder = 'Why did this bug happen?';
+      $('fieldSolution').placeholder  = 'How was it fixed? Code change, config, workaround?';
+    }
+  }
+
   function setEditing(bug) {
     state.editing = bug;
     if (bug) {
+      const kind = bug.kind || 'Bug';
+      setFormKind(kind);
       $('fieldTitle').value     = bug.title || '';
       $('fieldTags').value      = (bug.tags || []).join(', ');
+      $('fieldServices').value  = (bug.affectedServices || []).join(', ');
       $('fieldContext').value   = bug.context || '';
       $('fieldRootCause').value = bug.rootCause || '';
       $('fieldSolution').value  = bug.solution || '';
+      $('fieldLinks').value     = (bug.links || []).join('\n');
     }
     renderAddTab();
   }
 
   function clearForm() {
+    setFormKind('Bug');
     $('fieldTitle').value     = '';
     $('fieldTags').value      = '';
+    $('fieldServices').value  = '';
     $('fieldContext').value   = '';
     $('fieldRootCause').value = '';
     $('fieldSolution').value  = '';
+    $('fieldLinks').value     = '';
   }
 
   function renderAddTab() {
-    // Tab label flips between 'Add bug' and 'Edit bug'
-    $('tab-add-label').textContent = state.editing ? 'Edit bug' : 'Add bug';
+    // Tab label flips between 'Add' and 'Edit'
+    $('tab-add-label').textContent = state.editing ? 'Edit' : 'Add';
 
     // Save button label
-    $('saveButton').textContent = state.editing ? 'Update bug' : 'Save bug';
+    $('saveButton').textContent = state.editing ? 'Update' : 'Save';
 
     // Cancel button only appears while editing
     $('cancelEdit').style.display = state.editing ? '' : 'none';
@@ -224,6 +264,8 @@
     renderAddTab();
     try {
       const result = await api.extract(text);
+      // Extract is bug-shaped — switch the form to Bug kind.
+      setFormKind('Bug');
       $('fieldTitle').value     = result.title     || '';
       $('fieldTags').value      = (result.tags || []).join(', ');
       $('fieldContext').value   = result.context   || '';
@@ -245,11 +287,14 @@
   }
 
   async function handleSave() {
+    const kind     = state.formKind;
     const title    = $('fieldTitle').value.trim();
     const tagsRaw  = $('fieldTags').value;
+    const services = $('fieldServices').value;
     const context  = $('fieldContext').value.trim();
     const rootCause= $('fieldRootCause').value.trim();
     const solution = $('fieldSolution').value.trim();
+    const linksRaw = $('fieldLinks').value;
 
     if (!title) {
       state.saveStatus = { type: 'error', msg: 'Title is required' };
@@ -257,15 +302,19 @@
       return;
     }
     if (!context && !rootCause && !solution) {
-      state.saveStatus = { type: 'error', msg: 'Fill at least one of: context, root cause, solution' };
+      const labels = labelsFor(kind);
+      state.saveStatus = { type: 'error', msg: `Fill at least one of: context, ${labels.rootCause.toLowerCase()}, ${labels.solution.toLowerCase()}` };
       renderAddTab();
       return;
     }
 
     const body = {
+      kind,
       title,
       tags: tagsRaw.split(',').map(t => t.trim()).filter(Boolean),
       context, rootCause, solution,
+      affectedServices: services.split(',').map(s => s.trim()).filter(Boolean),
+      links: linksRaw.split(/[\n,]/).map(l => l.trim()).filter(Boolean),
     };
 
     state.saveStatus = { type: 'loading', msg: 'Saving...' };
@@ -308,7 +357,7 @@
     state.bugsError = null;
     renderAllTab();
     try {
-      state.bugs = await api.list();
+      state.bugs = await api.list(state.listKind);
       state.bugsLoaded = true;
     } catch (e) {
       state.bugsError = e.message || 'Failed to load';
@@ -316,6 +365,15 @@
       state.bugsLoading = false;
       renderAllTab();
     }
+  }
+
+  function setListKind(kind) {
+    state.listKind = kind;
+    document.querySelectorAll('.kind-option[data-list-kind]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.listKind === kind);
+    });
+    state.bugsLoaded = false;
+    loadAllBugs();
   }
 
   async function handleDelete(id) {
@@ -353,14 +411,18 @@
     const f = state.filter.trim().toLowerCase();
     const filtered = f
       ? state.bugs.filter(b => {
-          const haystack = [b.title, (b.tags || []).join(' '), b.context, b.rootCause, b.solution]
-            .join(' ').toLowerCase();
+          const haystack = [
+            b.title,
+            (b.tags || []).join(' '),
+            (b.affectedServices || []).join(' '),
+            b.context, b.rootCause, b.solution,
+          ].join(' ').toLowerCase();
           return haystack.includes(f);
         })
       : state.bugs;
 
     if (filtered.length === 0) {
-      const msg = state.bugs.length === 0 ? 'No bugs saved yet.' : 'No bugs match the filter.';
+      const msg = state.bugs.length === 0 ? 'Nothing saved yet.' : 'No entries match the filter.';
       container.innerHTML = `<div class="empty">${msg}</div>`;
       return;
     }
@@ -387,15 +449,22 @@
 
   function renderBugCardHtml(bug, opts) {
     opts = opts || {};
+    const kind = bug.kind || 'Bug';
+    const labels = labelsFor(kind);
+    const kindBadge = `<span class="tag kind kind-${kind.toLowerCase()}">${kind}</span>`;
     const tags = (bug.tags || []).map(t => `<span class="tag">${escape(t)}</span>`).join('');
     const scoreTag = (opts.score != null)
       ? `<span class="tag score">${Math.round(opts.score * 100)}% match</span>`
       : '';
 
     const sections = [];
-    if (bug.context)   sections.push(section('Context',    bug.context));
-    if (bug.rootCause) sections.push(section('Root cause', bug.rootCause));
-    if (bug.solution)  sections.push(section('Solution',   bug.solution));
+    const services = bug.affectedServices || [];
+    if (services.length > 0) sections.push(section('Affected services', services.join(', ')));
+    if (bug.context)   sections.push(section('Context',          bug.context));
+    if (bug.rootCause) sections.push(section(labels.rootCause,   bug.rootCause));
+    if (bug.solution)  sections.push(section(labels.solution,    bug.solution));
+    const links = bug.links || [];
+    if (links.length > 0) sections.push(linksSection(links));
 
     const actions = opts.withActions
       ? `<div class="actions">
@@ -409,7 +478,7 @@
         <div class="card-header">
           <div style="flex: 1; min-width: 0;">
             <h3 class="card-title">${escape(bug.title)}</h3>
-            <div class="tags">${tags}${scoreTag}</div>
+            <div class="tags">${kindBadge}${tags}${scoreTag}</div>
           </div>
           <span class="card-meta">${escape(formatDate(bug.updatedAt))}</span>
         </div>
@@ -422,6 +491,23 @@
     return `<div class="section">
               <div class="section-label">${escape(label)}</div>
               <div class="section-body">${escape(body)}</div>
+            </div>`;
+  }
+
+  // Render link list. http(s) values become anchors; everything else
+  // (local file paths) renders as plain code-style text — browsers refuse
+  // to follow file:// from an http origin, so a clickable file:// link
+  // would just look broken.
+  function linksSection(links) {
+    const items = links.map(l => {
+      if (/^https?:\/\//i.test(l)) {
+        return `<li><a href="${escape(l)}" target="_blank" rel="noreferrer noopener">${escape(l)}</a></li>`;
+      }
+      return `<li><code>${escape(l)}</code></li>`;
+    }).join('');
+    return `<div class="section">
+              <div class="section-label">Links</div>
+              <ul class="link-list">${items}</ul>
             </div>`;
   }
 
@@ -438,6 +524,11 @@
     $('askQuestion').addEventListener('input', renderAskTab);
     $('askQuestion').addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAsk();
+    });
+
+    // Add — kind toggle
+    document.querySelectorAll('.kind-option[data-kind]').forEach(btn => {
+      btn.addEventListener('click', () => setFormKind(btn.dataset.kind));
     });
 
     // Add — buttons
@@ -457,12 +548,18 @@
       renderAddTab();
     });
 
-    // All — filter & refresh
+    // All — kind filter, text filter, refresh
+    document.querySelectorAll('.kind-option[data-list-kind]').forEach(btn => {
+      btn.addEventListener('click', () => setListKind(btn.dataset.listKind));
+    });
     $('filterText').addEventListener('input', (e) => {
       state.filter = e.target.value;
       renderAllTab();
     });
     $('refreshList').addEventListener('click', loadAllBugs);
+
+    // Initial form-kind state
+    setFormKind('Bug');
 
     // Initial render of each tab so they have correct state on first show
     renderAskTab();

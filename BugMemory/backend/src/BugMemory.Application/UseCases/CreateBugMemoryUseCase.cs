@@ -7,11 +7,14 @@ using Microsoft.Extensions.Logging;
 namespace BugMemory.Application.UseCases;
 
 public sealed record CreateBugMemoryCommand(
+    MemoryKind Kind,
     string Title,
     IReadOnlyList<string> Tags,
     string Context,
     string RootCause,
-    string Solution);
+    string Solution,
+    IReadOnlyList<string>? AffectedServices,
+    IReadOnlyList<string>? Links);
 
 public sealed class CreateBugMemoryUseCase
 {
@@ -38,11 +41,14 @@ public sealed class CreateBugMemoryUseCase
     public async Task<BugMemoryDto> ExecuteAsync(CreateBugMemoryCommand command, CancellationToken ct)
     {
         var entry = BugMemoryEntry.Create(
+            command.Kind,
             command.Title,
             command.Context,
             command.RootCause,
             command.Solution,
             command.Tags,
+            command.AffectedServices,
+            command.Links,
             _clock.UtcNow);
 
         await _repository.AddAsync(entry, ct);
@@ -54,7 +60,7 @@ public sealed class CreateBugMemoryUseCase
             new Dictionary<string, object> { ["entryId"] = entry.Id.ToString() },
             ct);
 
-        _logger.LogInformation("Created bug memory {Id}", entry.Id);
+        _logger.LogInformation("Created {Kind} memory {Id}", entry.Kind, entry.Id);
         return entry.ToDto();
     }
 }

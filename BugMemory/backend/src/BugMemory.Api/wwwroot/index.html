@@ -9,29 +9,29 @@
        served as static files from wwwroot by ASP.NET; default cache
        headers are short but not zero. Same pattern as DistributedDebugger
        uses for its v2/v3 pages. -->
-  <link rel="stylesheet" href="app.css?v=1">
+  <link rel="stylesheet" href="app.css?v=2">
 </head>
 <body>
   <div class="app">
     <header class="header">
       <h1>Bug memory</h1>
-      <p>Your personal RAG-powered bug knowledge base</p>
+      <p>Your personal RAG-powered bug & feature knowledge base</p>
     </header>
 
     <!-- Tab strip. Active class is toggled by switchTab(name) in app.js.
-         The label on the Add button flips to 'Edit bug' while editing. -->
+         The label on the Add button flips to 'Edit' while editing. -->
     <div class="tabs">
       <button class="tab active" data-tab="ask">Ask</button>
-      <button class="tab" data-tab="add" id="tab-add-label">Add bug</button>
-      <button class="tab" data-tab="all">All bugs</button>
+      <button class="tab" data-tab="add" id="tab-add-label">Add</button>
+      <button class="tab" data-tab="all">All</button>
     </div>
 
     <!-- ===== Ask tab ===== -->
     <div class="tab-panel" data-panel="ask">
       <div class="field">
-        <label class="label">Ask your bug memory</label>
+        <label class="label">Ask your memory</label>
         <textarea id="askQuestion"
-                  placeholder="e.g. How did we fix the duplicate key error in content-media-service?"></textarea>
+                  placeholder="e.g. Why did we add MetadataJson to the authoring service?"></textarea>
         <div class="hint">Cmd/Ctrl + Enter to ask</div>
       </div>
       <div class="row end">
@@ -57,7 +57,7 @@
         <div class="row between" style="align-items: flex-start;">
           <div>
             <h3>Import from chat or Slack thread</h3>
-            <div class="hint">Paste raw text — AI will extract title, tags, context, root cause, and solution.</div>
+            <div class="hint">Paste raw text — AI will extract title, tags, context, root cause, and solution. (Bug kind only — feature entries are written manually.)</div>
           </div>
           <button class="small" id="importToggle">Show</button>
         </div>
@@ -79,12 +79,23 @@
 
       <div id="addForm">
         <div class="field">
+          <label class="label">Kind</label>
+          <div class="kind-toggle" role="radiogroup" aria-label="Memory kind">
+            <button type="button" class="kind-option active" data-kind="Bug">Bug</button>
+            <button type="button" class="kind-option" data-kind="Feature">Feature</button>
+          </div>
+        </div>
+        <div class="field">
           <label class="label">Title</label>
-          <input id="fieldTitle" placeholder="Short summary of the bug">
+          <input id="fieldTitle" placeholder="Short summary">
         </div>
         <div class="field">
           <label class="label">Tags <span style="color: var(--text-faint); font-weight: 400;">(comma-separated)</span></label>
           <input id="fieldTags" placeholder="content-media-service, kafka, opensearch">
+        </div>
+        <div class="field feature-only" style="display: none;">
+          <label class="label">Affected services <span style="color: var(--text-faint); font-weight: 400;">(comma-separated)</span></label>
+          <input id="fieldServices" placeholder="authoring-service, content-search-service">
         </div>
         <div class="field">
           <label class="label">Context</label>
@@ -92,14 +103,19 @@
                     placeholder="What were you doing? Which service, environment, conditions?"></textarea>
         </div>
         <div class="field">
-          <label class="label">Root cause</label>
+          <label class="label" id="labelRootCause">Root cause</label>
           <textarea id="fieldRootCause"
                     placeholder="Why did this bug happen?"></textarea>
         </div>
         <div class="field">
-          <label class="label">Solution</label>
+          <label class="label" id="labelSolution">Solution</label>
           <textarea id="fieldSolution"
                     placeholder="How was it fixed? Code change, config, workaround?"></textarea>
+        </div>
+        <div class="field feature-only" style="display: none;">
+          <label class="label">Links <span style="color: var(--text-faint); font-weight: 400;">(one per line — repo paths, PR URLs, doc links)</span></label>
+          <textarea id="fieldLinks"
+                    placeholder="C:/path/to/authoring-service&#10;https://github.com/.../pull/123"></textarea>
         </div>
       </div>
 
@@ -107,13 +123,18 @@
         <span class="status" id="saveStatus" style="margin-right: auto;"></span>
         <button id="cancelEdit" style="display: none;">Cancel</button>
         <button id="clearForm">Clear</button>
-        <button class="primary" id="saveButton">Save bug</button>
+        <button class="primary" id="saveButton">Save</button>
       </div>
     </div>
 
-    <!-- ===== All bugs tab ===== -->
+    <!-- ===== All tab ===== -->
     <div class="tab-panel" data-panel="all" style="display: none;">
       <div class="row" style="margin-bottom: 16px;">
+        <div class="kind-toggle" role="radiogroup" aria-label="Filter by kind">
+          <button type="button" class="kind-option active" data-list-kind="all">All</button>
+          <button type="button" class="kind-option" data-list-kind="Bug">Bugs</button>
+          <button type="button" class="kind-option" data-list-kind="Feature">Features</button>
+        </div>
         <input id="filterText" placeholder="Filter by tag or text..." style="flex: 1;">
         <button id="refreshList">Refresh</button>
       </div>
@@ -121,6 +142,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=1"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>

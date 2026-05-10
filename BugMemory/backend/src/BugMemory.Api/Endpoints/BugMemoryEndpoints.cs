@@ -1,5 +1,6 @@
 using BugMemory.Api.Contracts;
 using BugMemory.Application.UseCases;
+using BugMemory.Domain.Entities;
 
 namespace BugMemory.Api.Endpoints;
 
@@ -9,8 +10,8 @@ public static class BugMemoryEndpoints
     {
         var group = app.MapGroup("/api/bugs").WithTags("Bug Memory");
 
-        group.MapGet("", async (ListBugMemoriesUseCase useCase, CancellationToken ct) =>
-            Results.Ok(await useCase.ExecuteAsync(ct)));
+        group.MapGet("", async (MemoryKind? kind, ListBugMemoriesUseCase useCase, CancellationToken ct) =>
+            Results.Ok(await useCase.ExecuteAsync(kind, ct)));
 
         group.MapGet("{id:guid}", async (Guid id, GetBugMemoryUseCase useCase, CancellationToken ct) =>
         {
@@ -23,7 +24,15 @@ public static class BugMemoryEndpoints
             try
             {
                 var dto = await useCase.ExecuteAsync(
-                    new CreateBugMemoryCommand(request.Title, request.Tags ?? new(), request.Context, request.RootCause, request.Solution),
+                    new CreateBugMemoryCommand(
+                        request.Kind ?? MemoryKind.Bug,
+                        request.Title,
+                        request.Tags ?? new(),
+                        request.Context,
+                        request.RootCause,
+                        request.Solution,
+                        request.AffectedServices,
+                        request.Links),
                     ct);
                 return Results.Created($"/api/bugs/{dto.Id}", dto);
             }
@@ -38,7 +47,16 @@ public static class BugMemoryEndpoints
             try
             {
                 var dto = await useCase.ExecuteAsync(
-                    new UpdateBugMemoryCommand(id, request.Title, request.Tags ?? new(), request.Context, request.RootCause, request.Solution),
+                    new UpdateBugMemoryCommand(
+                        id,
+                        request.Kind ?? MemoryKind.Bug,
+                        request.Title,
+                        request.Tags ?? new(),
+                        request.Context,
+                        request.RootCause,
+                        request.Solution,
+                        request.AffectedServices,
+                        request.Links),
                     ct);
                 return dto is null ? Results.NotFound() : Results.Ok(dto);
             }

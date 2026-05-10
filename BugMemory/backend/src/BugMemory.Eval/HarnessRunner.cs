@@ -1,3 +1,4 @@
+using BugMemory.Application;
 using BugMemory.Application.Abstractions;
 using BugMemory.Application.UseCases;
 using BugMemory.Domain.Entities;
@@ -186,8 +187,9 @@ public sealed class HarnessRunner
             foreach (var s in seed)
             {
                 var entry = BugMemoryEntry.Create(
+                    MemoryKind.Bug,
                     s.Title, s.Context, s.RootCause, s.Solution,
-                    s.Tags, clock.UtcNow);
+                    s.Tags, null, null, clock.UtcNow);
                 var vec = await embeddings.EmbedAsync(entry.ToEmbeddingText(), ct);
                 await vectorStore.UpsertAsync(
                     entry.Id, vec,
