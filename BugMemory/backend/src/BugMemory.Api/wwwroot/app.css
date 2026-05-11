@@ -474,6 +474,51 @@ button.small {
   margin-top: 10px;
 }
 
+.link-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 0 0 0 4px;
+  text-decoration: underline;
+}
+
+.link-btn:disabled {
+  color: var(--text-faint);
+  cursor: default;
+  text-decoration: none;
+}
+
+.answer-block {
+  margin: 6px 0 8px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.answer-block.loading {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.answer-block.error {
+  border-left-color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.answer-evidence {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
 @media (max-width: 720px) {
   .context-row {
     grid-template-columns: 1fr;

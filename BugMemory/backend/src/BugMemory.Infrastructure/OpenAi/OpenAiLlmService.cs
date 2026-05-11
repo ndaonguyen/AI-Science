@@ -138,6 +138,74 @@ public sealed class OpenAiLlmService : ILlmService
             parsed.RewrittenContext ?? string.Empty);
     }
 
+    public async Task<ClarificationAnswer> AnswerClarificationAsync(
+        string question,
+        string draftContext,
+        IReadOnlyList<string> tags,
+        IReadOnlyList<string> affectedServices,
+        string repoSnapshot,
+        CancellationToken ct)
+    {
+        var tagList = tags.Count == 0 ? "(none)" : string.Join(", ", tags);
+        var serviceList = affectedServices.Count == 0 ? "(none)" : string.Join(", ", affectedServices);
+        var repoBlock = string.IsNullOrWhiteSpace(repoSnapshot)
+            ? "(no repo content available)"
+            : repoSnapshot;
+        var draftBlock = string.IsNullOrWhiteSpace(draftContext)
+            ? "(empty)"
+            : draftContext;
+
+        var systemPrompt = $$"""
+            You answer a clarification question that an AI reviewer raised about a developer's bug/feature memory entry. Your answer must be grounded in the provided repo snapshot.
+
+            Inputs:
+            - Tags: {{tagList}}
+            - Affected services: {{serviceList}}
+            - User's draft Context (for background only)
+            - Repo snapshot (file tree + keyword-matched snippets)
+
+            Rules:
+            - Ground every claim in the snapshot. Cite file paths (and line numbers when shown) inside the snapshot as evidence.
+            - If the snapshot doesn't contain enough to answer, say so plainly. Do NOT invent file names, class names, or behavior.
+            - Be concise. 1-4 sentences for the answer.
+            - "evidence" is a short list of file paths (with line numbers when available) that support the answer. Empty list if no evidence.
+
+            Respond with JSON only, no markdown:
+            { "answer": "...", "evidence": ["path/to/file.cs:42", ...] }
+
+            User's draft Context:
+            {{draftBlock}}
+
+            Repo snapshot:
+            {{repoBlock}}
+            """;
+
+        var request = new ChatRequest(
+            _options.ChatModel,
+            new[]
+            {
+                new ChatMessage("system", systemPrompt),
+                new ChatMessage("user", question),
+            },
+            new ResponseFormat("json_object"),
+            Temperature: 0.2);
+
+        var response = await _http.PostAsJsonAsync("v1/chat/completions", request, ct);
+        await response.EnsureSuccessOrThrowWithBodyAsync("OpenAI", ct);
+        var payload = await response.Content.ReadFromJsonAsync<ChatResponse>(cancellationToken: ct)
+                      ?? throw new InvalidOperationException("Empty chat response");
+
+        var content = payload.Choices.FirstOrDefault()?.Message.Content
+                      ?? throw new InvalidOperationException("No content in chat response");
+
+        var parsed = JsonSerializer.Deserialize<ClarificationPayload>(content, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                     ?? throw new InvalidOperationException("Could not parse clarification JSON");
+
+        return new ClarificationAnswer(
+            parsed.Answer ?? string.Empty,
+            parsed.Evidence ?? new List<string>());
+    }
+
     public async Task<RagAnswer> AnswerWithContextAsync(
         string question,
         IReadOnlyList<RetrievedContext> context,
@@ -230,5 +298,11 @@ public sealed class OpenAiLlmService : ILlmService
         public string? Summary { get; set; }
         public List<string>? Suggestions { get; set; }
         public string? RewrittenContext { get; set; }
+    }
+
+    private sealed class ClarificationPayload
+    {
+        public string? Answer { get; set; }
+        public List<string>? Evidence { get; set; }
     }
 }

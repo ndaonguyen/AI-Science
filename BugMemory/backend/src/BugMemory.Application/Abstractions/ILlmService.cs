@@ -16,6 +16,10 @@ public sealed record ContextReview(
     IReadOnlyList<string> Suggestions,
     string RewrittenContext);
 
+public sealed record ClarificationAnswer(
+    string Answer,
+    IReadOnlyList<string> Evidence);
+
 public interface ILlmService
 {
     Task<ExtractedBugFields> ExtractBugFieldsAsync(string sourceText, CancellationToken ct);
@@ -27,6 +31,14 @@ public interface ILlmService
 
     Task<ContextReview> ReviewContextAsync(
         string context,
+        IReadOnlyList<string> tags,
+        IReadOnlyList<string> affectedServices,
+        string repoSnapshot,
+        CancellationToken ct);
+
+    Task<ClarificationAnswer> AnswerClarificationAsync(
+        string question,
+        string draftContext,
         IReadOnlyList<string> tags,
         IReadOnlyList<string> affectedServices,
         string repoSnapshot,

@@ -122,5 +122,24 @@ public static class BugMemoryEndpoints
                 return Results.BadRequest(new { error = ex.Message });
             }
         });
+
+        group.MapPost("review/answer", async (ClarificationRequest request, AnswerClarificationUseCase useCase, CancellationToken ct) =>
+        {
+            try
+            {
+                var result = await useCase.ExecuteAsync(
+                    new AnswerClarificationCommand(
+                        request.Question,
+                        request.DraftContext ?? string.Empty,
+                        request.Tags ?? new(),
+                        request.AffectedServices ?? new()),
+                    ct);
+                return Results.Ok(result);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
     }
 }

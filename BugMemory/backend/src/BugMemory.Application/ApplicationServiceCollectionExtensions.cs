@@ -16,6 +16,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<AskBugMemoryUseCase>();
         services.AddScoped<ExtractBugFieldsUseCase>();
         services.AddScoped<ReviewContextUseCase>();
+        services.AddScoped<AnswerClarificationUseCase>();
         return services;
     }
 }

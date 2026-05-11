@@ -32,3 +32,9 @@ public sealed record ReviewRequest(
     string Context,
     List<string>? Tags,
     List<string>? AffectedServices);
+
+public sealed record ClarificationRequest(
+    string Question,
+    string? DraftContext,
+    List<string>? Tags,
+    List<string>? AffectedServices);
