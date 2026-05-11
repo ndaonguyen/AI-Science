@@ -411,3 +411,71 @@ button.small {
   0% { background-color: var(--accent-bg); }
   100% { background-color: var(--surface); }
 }
+
+.context-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.context-row .field {
+  margin-bottom: 16px;
+}
+
+.context-row textarea {
+  min-height: 160px;
+}
+
+.review-pane {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  min-height: 160px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.review-empty {
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+.review-summary {
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.review-suggestions {
+  margin: 0 0 10px;
+  padding-left: 18px;
+}
+
+.review-suggestions li {
+  margin-bottom: 4px;
+}
+
+.review-meta {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.review-meta .warn {
+  color: var(--danger);
+}
+
+.review-rewrite {
+  margin-top: 10px;
+}
+
+@media (max-width: 720px) {
+  .context-row {
+    grid-template-columns: 1fr;
+  }
+}

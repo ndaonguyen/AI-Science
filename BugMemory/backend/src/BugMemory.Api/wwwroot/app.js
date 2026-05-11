@@ -29,6 +29,8 @@
     askError: null,
     importOpen: false,
     importStatus: { type: 'idle', msg: '' },
+    reviewStatus: { type: 'idle', msg: '' },
+    review: null,               // ContextReviewDto | null
     saveStatus: { type: 'idle', msg: '' },
     filter: '',
   };
@@ -48,6 +50,7 @@
     search:  (query, topK=5) => req('/api/search',   { method: 'POST', body: JSON.stringify({ query, topK }) }),
     ask:     (question, topK=5) => req('/api/ask',   { method: 'POST', body: JSON.stringify({ question, topK }) }),
     extract: (sourceText)    => req('/api/extract',  { method: 'POST', body: JSON.stringify({ sourceText }) }),
+    review:  (body)          => req('/api/review',   { method: 'POST', body: JSON.stringify(body) }),
   };
 
   async function req(path, init) {
@@ -224,6 +227,8 @@
     $('fieldRootCause').value = '';
     $('fieldSolution').value  = '';
     $('fieldLinks').value     = '';
+    state.review = null;
+    state.reviewStatus = { type: 'idle', msg: '' };
   }
 
   function renderAddTab() {
@@ -242,10 +247,76 @@
     // Status messages
     setStatus($('saveStatus'),   state.saveStatus.type,   state.saveStatus.msg);
     setStatus($('importStatus'), state.importStatus.type, state.importStatus.msg);
+    setStatus($('reviewStatus'), state.reviewStatus.type, state.reviewStatus.msg);
 
     // Import panel toggle
     $('importBody').style.display = state.importOpen ? '' : 'none';
     $('importToggle').textContent = state.importOpen ? 'Hide' : 'Show';
+
+    // Review button + pane
+    $('reviewButton').disabled = state.reviewStatus.type === 'loading';
+    renderReviewPane();
+  }
+
+  function renderReviewPane() {
+    const pane = $('reviewPane');
+    const review = state.review;
+    if (!review) {
+      pane.innerHTML = '<div class="review-empty">Click <strong>Review my input</strong> to have the AI check your Context against the affected service\'s local repo.</div>';
+      return;
+    }
+    const summary = review.summary ? `<div class="review-summary">${escape(review.summary)}</div>` : '';
+    const suggestions = (review.suggestions && review.suggestions.length)
+      ? `<ul class="review-suggestions">${review.suggestions.map(s => `<li>${escape(s)}</li>`).join('')}</ul>`
+      : '<div class="review-empty">No suggestions — looks good.</div>';
+
+    const scanned = (review.scannedRepos && review.scannedRepos.length)
+      ? `Scanned: ${review.scannedRepos.map(escape).join(', ')}`
+      : 'No local repos scanned — prose-only review';
+    const unconfigured = (review.unconfiguredServices && review.unconfiguredServices.length)
+      ? `<span class="warn">Unconfigured: ${review.unconfiguredServices.map(escape).join(', ')}</span>`
+      : '';
+
+    const rewriteBtn = (review.rewrittenContext && review.rewrittenContext.trim())
+      ? `<div class="review-rewrite"><button class="small" id="applyRewrite" type="button">Apply AI rewrite to Context</button></div>`
+      : '';
+
+    pane.innerHTML = `${summary}${suggestions}${rewriteBtn}<div class="review-meta">${scanned}${unconfigured ? ' — ' + unconfigured : ''}</div>`;
+
+    const applyBtn = $('applyRewrite');
+    if (applyBtn) {
+      applyBtn.addEventListener('click', () => {
+        if (state.review && state.review.rewrittenContext) {
+          $('fieldContext').value = state.review.rewrittenContext;
+        }
+      });
+    }
+  }
+
+  async function handleReview() {
+    const context = $('fieldContext').value.trim();
+    if (context.length < 10) {
+      state.reviewStatus = { type: 'error', msg: 'Write a bit of Context first' };
+      renderAddTab();
+      return;
+    }
+    const tags = $('fieldTags').value.split(',').map(t => t.trim()).filter(Boolean);
+    const affectedServices = $('fieldServices').value.split(',').map(s => s.trim()).filter(Boolean);
+
+    state.reviewStatus = { type: 'loading', msg: 'Reviewing with AI...' };
+    renderAddTab();
+    try {
+      const result = await api.review({ context, tags, affectedServices });
+      state.review = result;
+      const scannedCount = (result.scannedRepos || []).length;
+      state.reviewStatus = scannedCount > 0
+        ? { type: 'success', msg: `Reviewed against ${scannedCount} repo(s)` }
+        : { type: 'success', msg: 'Reviewed (no local repos scanned)' };
+    } catch (e) {
+      state.reviewStatus = { type: 'error', msg: e.message || 'Review failed' };
+    } finally {
+      renderAddTab();
+    }
   }
 
   async function handleExtract() {
@@ -543,6 +614,9 @@
       state.importStatus = { type: 'idle', msg: '' };
       renderAddTab();
     });
+
+    // Add — review pane
+    $('reviewButton').addEventListener('click', handleReview);
 
     // All — kind filter, text filter, refresh
     document.querySelectorAll('.kind-option[data-list-kind]').forEach(btn => {

@@ -5,7 +5,8 @@
       "Bash(dotnet *)",
       "PowerShell(Get-Process *)",
       "PowerShell(Test-Path *)",
-      "PowerShell(Get-Command *)"
+      "PowerShell(Get-Command *)",
+      "Bash(git check-ignore *)"
     ]
   }
 }

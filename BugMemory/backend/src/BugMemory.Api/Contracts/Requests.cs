@@ -27,3 +27,8 @@ public sealed record SearchRequest(string Query, int? TopK);
 public sealed record AskRequest(string Question, int? TopK);
 
 public sealed record ExtractRequest(string SourceText);
+
+public sealed record ReviewRequest(
+    string Context,
+    List<string>? Tags,
+    List<string>? AffectedServices);

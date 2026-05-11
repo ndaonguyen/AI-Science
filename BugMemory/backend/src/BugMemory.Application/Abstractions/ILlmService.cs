@@ -11,6 +11,11 @@ public sealed record RagAnswer(
     string Answer,
     IReadOnlyList<Guid> CitedEntryIds);
 
+public sealed record ContextReview(
+    string Summary,
+    IReadOnlyList<string> Suggestions,
+    string RewrittenContext);
+
 public interface ILlmService
 {
     Task<ExtractedBugFields> ExtractBugFieldsAsync(string sourceText, CancellationToken ct);
@@ -18,6 +23,13 @@ public interface ILlmService
     Task<RagAnswer> AnswerWithContextAsync(
         string question,
         IReadOnlyList<RetrievedContext> context,
+        CancellationToken ct);
+
+    Task<ContextReview> ReviewContextAsync(
+        string context,
+        IReadOnlyList<string> tags,
+        IReadOnlyList<string> affectedServices,
+        string repoSnapshot,
         CancellationToken ct);
 }
 

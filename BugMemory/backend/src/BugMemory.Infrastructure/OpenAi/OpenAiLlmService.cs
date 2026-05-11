@@ -70,6 +70,74 @@ public sealed class OpenAiLlmService : ILlmService
             extracted.Solution ?? string.Empty);
     }
 
+    public async Task<ContextReview> ReviewContextAsync(
+        string context,
+        IReadOnlyList<string> tags,
+        IReadOnlyList<string> affectedServices,
+        string repoSnapshot,
+        CancellationToken ct)
+    {
+        var tagList = tags.Count == 0 ? "(none)" : string.Join(", ", tags);
+        var serviceList = affectedServices.Count == 0 ? "(none)" : string.Join(", ", affectedServices);
+        var repoBlock = string.IsNullOrWhiteSpace(repoSnapshot)
+            ? "(no repo content available — review prose only)"
+            : repoSnapshot;
+
+        var systemPrompt = $$"""
+            You review a draft "Context" field that a developer wrote for a bug or feature memory entry.
+            Your goal is to make the Context clearer, more specific, and technically accurate against the actual code provided.
+
+            Inputs you receive:
+            - Tags: {{tagList}}
+            - Affected services: {{serviceList}}
+            - Repo snapshot for those services (file tree + keyword-matched snippets), or "(no repo content available)" if none.
+            - Draft Context written by the user.
+
+            Rules:
+            - Cross-check technical specifics in the Context (service names, file paths, class names, env vars, endpoints) against the repo snapshot. Flag anything that looks wrong or missing.
+            - Fix grammar, articles, verb agreement, and awkward phrasing.
+            - Tighten vague phrases ("something broke", "weird issue") into specific language IF the repo snapshot supports the specificity. Do not invent details that the snapshot does not show.
+            - If the snapshot is missing or unhelpful, do a prose-only review (grammar + clarity) and say so in the summary.
+            - Keep the original meaning. If unsure what the user meant, mention it in suggestions rather than guessing.
+
+            Respond with JSON only, no markdown, matching:
+            {
+              "summary": "one short sentence describing the overall state of the Context",
+              "suggestions": ["bullet 1", "bullet 2", ...],
+              "rewrittenContext": "the full Context rewritten with your improvements applied"
+            }
+
+            Repo snapshot:
+            {{repoBlock}}
+            """;
+
+        var request = new ChatRequest(
+            _options.ChatModel,
+            new[]
+            {
+                new ChatMessage("system", systemPrompt),
+                new ChatMessage("user", string.IsNullOrWhiteSpace(context) ? "(empty)" : context),
+            },
+            new ResponseFormat("json_object"),
+            Temperature: 0.2);
+
+        var response = await _http.PostAsJsonAsync("v1/chat/completions", request, ct);
+        await response.EnsureSuccessOrThrowWithBodyAsync("OpenAI", ct);
+        var payload = await response.Content.ReadFromJsonAsync<ChatResponse>(cancellationToken: ct)
+                      ?? throw new InvalidOperationException("Empty chat response");
+
+        var content = payload.Choices.FirstOrDefault()?.Message.Content
+                      ?? throw new InvalidOperationException("No content in chat response");
+
+        var parsed = JsonSerializer.Deserialize<ReviewPayload>(content, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                     ?? throw new InvalidOperationException("Could not parse review JSON");
+
+        return new ContextReview(
+            parsed.Summary ?? string.Empty,
+            parsed.Suggestions ?? new List<string>(),
+            parsed.RewrittenContext ?? string.Empty);
+    }
+
     public async Task<RagAnswer> AnswerWithContextAsync(
         string question,
         IReadOnlyList<RetrievedContext> context,
@@ -155,5 +223,12 @@ public sealed class OpenAiLlmService : ILlmService
     {
         public string? Answer { get; set; }
         public List<string>? CitedIds { get; set; }
+    }
+
+    private sealed class ReviewPayload
+    {
+        public string? Summary { get; set; }
+        public List<string>? Suggestions { get; set; }
+        public string? RewrittenContext { get; set; }
     }
 }

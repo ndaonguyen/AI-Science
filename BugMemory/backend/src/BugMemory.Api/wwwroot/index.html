@@ -9,7 +9,7 @@
        served as static files from wwwroot by ASP.NET; default cache
        headers are short but not zero. Same pattern as DistributedDebugger
        uses for its v2/v3 pages. -->
-  <link rel="stylesheet" href="app.css?v=2">
+  <link rel="stylesheet" href="app.css?v=3">
 </head>
 <body>
   <div class="app">
@@ -57,7 +57,7 @@
         <div class="row between" style="align-items: flex-start;">
           <div>
             <h3>Import from chat or Slack thread</h3>
-            <div class="hint">Paste raw text — AI will extract title, tags, context, root cause, and solution. (Bug kind only — feature entries are written manually.)</div>
+            <div class="hint">Paste raw text and the AI will extract the title, tags, context, root cause, and solution. (Bugs only — feature entries must be written manually.)</div>
           </div>
           <button class="small" id="importToggle">Show</button>
         </div>
@@ -97,10 +97,22 @@
           <label class="label">Affected services <span style="color: var(--text-faint); font-weight: 400;">(comma-separated)</span></label>
           <input id="fieldServices" placeholder="authoring-service, content-search-service">
         </div>
-        <div class="field">
-          <label class="label">Context</label>
-          <textarea id="fieldContext"
-                    placeholder="What were you doing? Which service, environment, conditions?"></textarea>
+        <div class="context-row">
+          <div class="field">
+            <label class="label">Context</label>
+            <textarea id="fieldContext"
+                      placeholder="What were you doing? Which service, environment, and conditions were involved?"></textarea>
+            <div class="row" style="margin-top: 6px;">
+              <button class="small" id="reviewButton" type="button">Review my input ✨</button>
+              <span class="status" id="reviewStatus" style="margin-left: 8px;"></span>
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">AI review</label>
+            <div id="reviewPane" class="review-pane">
+              <div class="review-empty">Click <strong>Review my input</strong> to have the AI check your Context against the affected service's local repo.</div>
+            </div>
+          </div>
         </div>
         <div class="field">
           <label class="label" id="labelRootCause">Root cause</label>
@@ -142,6 +154,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

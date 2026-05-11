@@ -1,4 +1,5 @@
 using BugMemory.Application.Abstractions;
+using BugMemory.Infrastructure.CodeScan;
 using BugMemory.Infrastructure.OpenAi;
 using BugMemory.Infrastructure.Persistence;
 using BugMemory.Infrastructure.Qdrant;
@@ -14,6 +15,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.Configure<OpenAiOptions>(configuration.GetSection("OpenAi"));
         services.Configure<QdrantOptions>(configuration.GetSection("Qdrant"));
         services.Configure<JsonFileBugMemoryRepositoryOptions>(configuration.GetSection("Storage"));
+        services.Configure<ServiceReposOptions>(configuration.GetSection("ServiceRepos"));
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IBugMemoryRepository, JsonFileBugMemoryRepository>();
@@ -21,6 +23,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddHttpClient<IEmbeddingService, OpenAiEmbeddingService>();
         services.AddHttpClient<ILlmService, OpenAiLlmService>();
         services.AddHttpClient<IVectorStore, QdrantVectorStore>();
+        services.AddSingleton<IRepoCodeScanner, LocalRepoCodeScanner>();
 
         return services;
     }

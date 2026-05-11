@@ -29,3 +29,10 @@ public sealed record ExtractionResultDto(
     string Context,
     string RootCause,
     string Solution);
+
+public sealed record ContextReviewDto(
+    string Summary,
+    IReadOnlyList<string> Suggestions,
+    string RewrittenContext,
+    IReadOnlyList<string> ScannedRepos,
+    IReadOnlyList<string> UnconfiguredServices);
