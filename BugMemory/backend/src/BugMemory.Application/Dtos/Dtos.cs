@@ -42,3 +42,8 @@ public sealed record ClarificationAnswerDto(
     IReadOnlyList<string> Evidence,
     IReadOnlyList<string> ScannedRepos,
     IReadOnlyList<string> UnconfiguredServices);
+
+public sealed record RewrittenContextDto(
+    string Context,
+    IReadOnlyList<string> ScannedRepos,
+    IReadOnlyList<string> UnconfiguredServices);

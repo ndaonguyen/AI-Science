@@ -206,6 +206,76 @@ public sealed class OpenAiLlmService : ILlmService
             parsed.Evidence ?? new List<string>());
     }
 
+    public async Task<string> RewriteContextWithAnswersAsync(
+        string originalContext,
+        IReadOnlyList<string> tags,
+        IReadOnlyList<string> affectedServices,
+        IReadOnlyList<ConfirmedClarification> clarifications,
+        string repoSnapshot,
+        CancellationToken ct)
+    {
+        var tagList = tags.Count == 0 ? "(none)" : string.Join(", ", tags);
+        var serviceList = affectedServices.Count == 0 ? "(none)" : string.Join(", ", affectedServices);
+        var repoBlock = string.IsNullOrWhiteSpace(repoSnapshot)
+            ? "(no repo content available)"
+            : repoSnapshot;
+        var qaBlock = clarifications.Count == 0
+            ? "(none)"
+            : string.Join("\n\n", clarifications.Select((c, i) =>
+                $"{i + 1}. Q: {c.Question}\n   A: {c.Answer}"));
+
+        var systemPrompt = $$"""
+            You produce a polished final "Context" field for a bug/feature memory entry by combining the user's original Context with their confirmed answers to clarifying questions.
+
+            Inputs:
+            - Tags: {{tagList}}
+            - Affected services: {{serviceList}}
+            - Repo snapshot (for additional grounding, not the source of truth)
+            - User's original Context
+            - Confirmed clarifications: questions and the answers the user accepted or edited
+
+            Rules:
+            - The CONFIRMED ANSWERS are authoritative — incorporate them as facts.
+            - Preserve the user's voice and intent. Don't make it longer than it needs to be.
+            - Don't repeat the answers verbatim — weave them into a coherent Context paragraph.
+            - Fix grammar and tighten phrasing while you're at it.
+            - Do NOT introduce new facts beyond what the original Context, the confirmed answers, or the repo snapshot support.
+            - Keep it 1-4 short paragraphs.
+
+            Respond with JSON only, no markdown:
+            { "context": "the final rewritten Context" }
+
+            Confirmed clarifications:
+            {{qaBlock}}
+
+            Repo snapshot:
+            {{repoBlock}}
+            """;
+
+        var request = new ChatRequest(
+            _options.ChatModel,
+            new[]
+            {
+                new ChatMessage("system", systemPrompt),
+                new ChatMessage("user", string.IsNullOrWhiteSpace(originalContext) ? "(empty)" : originalContext),
+            },
+            new ResponseFormat("json_object"),
+            Temperature: 0.2);
+
+        var response = await _http.PostAsJsonAsync("v1/chat/completions", request, ct);
+        await response.EnsureSuccessOrThrowWithBodyAsync("OpenAI", ct);
+        var payload = await response.Content.ReadFromJsonAsync<ChatResponse>(cancellationToken: ct)
+                      ?? throw new InvalidOperationException("Empty chat response");
+
+        var content = payload.Choices.FirstOrDefault()?.Message.Content
+                      ?? throw new InvalidOperationException("No content in chat response");
+
+        var parsed = JsonSerializer.Deserialize<RewritePayload>(content, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                     ?? throw new InvalidOperationException("Could not parse rewrite JSON");
+
+        return parsed.Context ?? string.Empty;
+    }
+
     public async Task<RagAnswer> AnswerWithContextAsync(
         string question,
         IReadOnlyList<RetrievedContext> context,
@@ -304,5 +374,10 @@ public sealed class OpenAiLlmService : ILlmService
     {
         public string? Answer { get; set; }
         public List<string>? Evidence { get; set; }
+    }
+
+    private sealed class RewritePayload
+    {
+        public string? Context { get; set; }
     }
 }

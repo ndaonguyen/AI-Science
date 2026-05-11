@@ -519,6 +519,83 @@ button.small {
   font-family: ui-monospace, Menlo, Consolas, monospace;
 }
 
+.clarification {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.clarification:last-child {
+  border-bottom: none;
+}
+
+.clarification-q {
+  width: 100%;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  margin-bottom: 6px;
+}
+
+.clarification-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.clarification-a {
+  width: 100%;
+  min-height: 56px;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  font-family: inherit;
+  resize: vertical;
+}
+
+.answer-status {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.answer-status.loading {
+  font-style: italic;
+}
+
+.answer-status.error {
+  color: var(--danger);
+}
+
+.review-rewrite-section {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-final-label {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+
+.review-final-preview {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  margin-bottom: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
 @media (max-width: 720px) {
   .context-row {
     grid-template-columns: 1fr;

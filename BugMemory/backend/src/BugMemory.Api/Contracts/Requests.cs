@@ -38,3 +38,11 @@ public sealed record ClarificationRequest(
     string? DraftContext,
     List<string>? Tags,
     List<string>? AffectedServices);
+
+public sealed record ClarificationPair(string Question, string Answer);
+
+public sealed record RewriteContextRequest(
+    string OriginalContext,
+    List<string>? Tags,
+    List<string>? AffectedServices,
+    List<ClarificationPair>? Clarifications);

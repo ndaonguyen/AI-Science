@@ -52,6 +52,7 @@
     extract: (sourceText)    => req('/api/extract',  { method: 'POST', body: JSON.stringify({ sourceText }) }),
     review:  (body)          => req('/api/review',   { method: 'POST', body: JSON.stringify(body) }),
     findAnswer: (body)       => req('/api/review/answer', { method: 'POST', body: JSON.stringify(body) }),
+    rewrite: (body)          => req('/api/review/rewrite', { method: 'POST', body: JSON.stringify(body) }),
   };
 
   async function req(path, init) {
@@ -266,31 +267,46 @@
       pane.innerHTML = '<div class="review-empty">Click <strong>Review my input</strong> to have the AI check your Context against the affected service\'s local repo.</div>';
       return;
     }
-    if (!review.answers) review.answers = {}; // { [index]: { status, answer?, evidence?, error? } }
+    if (!review.answers) review.answers = {};
+    if (!review.editedQuestions) review.editedQuestions = {};
+    if (!review.userAnswers) review.userAnswers = {};
+    if (!review.rewriteStatus) review.rewriteStatus = { type: 'idle', msg: '' };
 
     const summary = review.summary ? `<div class="review-summary">${escape(review.summary)}</div>` : '';
 
     let suggestionsHtml;
+    let hasAnyAnswer = false;
     if (review.suggestions && review.suggestions.length) {
-      suggestionsHtml = '<ul class="review-suggestions">' + review.suggestions.map((s, i) => {
+      suggestionsHtml = '<ol class="review-suggestions">' + review.suggestions.map((s, i) => {
         const ans = review.answers[i];
-        let answerBlock = '';
+        const editedQ = (review.editedQuestions[i] != null) ? review.editedQuestions[i] : s;
+        const userA = (review.userAnswers[i] != null)
+          ? review.userAnswers[i]
+          : (ans && ans.status === 'success' ? (ans.answer || '') : '');
+        if (userA.trim()) hasAnyAnswer = true;
+
+        let statusLine = '';
         if (ans) {
-          if (ans.status === 'loading') {
-            answerBlock = '<div class="answer-block loading">Searching repo...</div>';
-          } else if (ans.status === 'error') {
-            answerBlock = `<div class="answer-block error">${escape(ans.error || 'Lookup failed')}</div>`;
-          } else if (ans.status === 'success') {
-            const evidence = (ans.evidence && ans.evidence.length)
-              ? `<div class="answer-evidence">Evidence: ${ans.evidence.map(escape).join(', ')}</div>`
-              : '';
-            answerBlock = `<div class="answer-block">${escape(ans.answer || '(no answer)')}${evidence}</div>`;
-          }
+          if (ans.status === 'loading') statusLine = '<span class="answer-status loading">Searching repo...</span>';
+          else if (ans.status === 'error') statusLine = `<span class="answer-status error">${escape(ans.error || 'Lookup failed')}</span>`;
         }
+        const evidence = (ans && ans.status === 'success' && ans.evidence && ans.evidence.length)
+          ? `<div class="answer-evidence">Evidence: ${ans.evidence.map(escape).join(', ')}</div>`
+          : '';
         const btnLabel = ans && ans.status === 'success' ? 'Re-find' : 'Find answer';
         const btnDisabled = ans && ans.status === 'loading' ? 'disabled' : '';
-        return `<li>${escape(s)} <button class="link-btn" data-find-idx="${i}" ${btnDisabled}>${btnLabel}</button>${answerBlock}</li>`;
-      }).join('') + '</ul>';
+
+        return `
+          <li class="clarification">
+            <input class="clarification-q" data-edited-q-idx="${i}" value="${escape(editedQ)}" />
+            <div class="clarification-actions">
+              <button class="link-btn" data-find-idx="${i}" ${btnDisabled}>${btnLabel}</button>
+              ${statusLine}
+            </div>
+            <textarea class="clarification-a" data-user-a-idx="${i}" placeholder="Your answer (edit AI's answer or write your own)">${escape(userA)}</textarea>
+            ${evidence}
+          </li>`;
+      }).join('') + '</ol>';
     } else {
       suggestionsHtml = '<div class="review-empty">No suggestions — looks good.</div>';
     }
@@ -302,19 +318,40 @@
       ? `<span class="warn">Unconfigured: ${review.unconfiguredServices.map(escape).join(', ')}</span>`
       : '';
 
-    const rewriteBtn = (review.rewrittenContext && review.rewrittenContext.trim())
-      ? `<div class="review-rewrite"><button class="small" id="applyRewrite" type="button">Apply AI rewrite to Context</button></div>`
+    const rewriteStatusHtml = review.rewriteStatus.type !== 'idle'
+      ? `<span class="status ${review.rewriteStatus.type}" style="margin-left: 8px;">${escape(review.rewriteStatus.msg || '')}</span>`
+      : '';
+    const rewriteBtnDisabled = !hasAnyAnswer || review.rewriteStatus.type === 'loading' ? 'disabled' : '';
+    const rewriteBtnLabel = review.rewriteStatus.type === 'loading' ? 'Rewriting...' : 'Rewrite Context with answers';
+    const rewriteSection = (review.suggestions && review.suggestions.length)
+      ? `<div class="review-rewrite-section">
+           <button class="primary small" id="doRewrite" type="button" ${rewriteBtnDisabled}>${rewriteBtnLabel}</button>
+           ${rewriteStatusHtml}
+         </div>`
       : '';
 
-    pane.innerHTML = `${summary}${suggestionsHtml}${rewriteBtn}<div class="review-meta">${scanned}${unconfigured ? ' — ' + unconfigured : ''}</div>`;
+    const applyBtn = (review.rewrittenContext && review.rewrittenContext.trim())
+      ? `<div class="review-rewrite">
+           <div class="review-final-label">Suggested Context to save:</div>
+           <div class="review-final-preview">${escape(review.rewrittenContext)}</div>
+           <button class="small" id="applyRewrite" type="button">Apply to Context field</button>
+         </div>`
+      : '';
 
-    const applyBtn = $('applyRewrite');
-    if (applyBtn) {
-      applyBtn.addEventListener('click', () => {
+    pane.innerHTML = `${summary}${suggestionsHtml}${rewriteSection}${applyBtn}<div class="review-meta">${scanned}${unconfigured ? ' — ' + unconfigured : ''}</div>`;
+
+    const apply = $('applyRewrite');
+    if (apply) {
+      apply.addEventListener('click', () => {
         if (state.review && state.review.rewrittenContext) {
           $('fieldContext').value = state.review.rewrittenContext;
         }
       });
+    }
+
+    const rewriteBtn = $('doRewrite');
+    if (rewriteBtn) {
+      rewriteBtn.addEventListener('click', handleRewrite);
     }
 
     pane.querySelectorAll('[data-find-idx]').forEach(btn => {
@@ -323,6 +360,57 @@
         handleFindAnswer(idx);
       });
     });
+
+    pane.querySelectorAll('[data-edited-q-idx]').forEach(el => {
+      el.addEventListener('input', () => {
+        const idx = parseInt(el.getAttribute('data-edited-q-idx'), 10);
+        state.review.editedQuestions[idx] = el.value;
+      });
+    });
+
+    pane.querySelectorAll('[data-user-a-idx]').forEach(el => {
+      el.addEventListener('input', () => {
+        const idx = parseInt(el.getAttribute('data-user-a-idx'), 10);
+        state.review.userAnswers[idx] = el.value;
+        const anyNow = Object.values(state.review.userAnswers).some(v => v && v.trim());
+        const btn = $('doRewrite');
+        if (btn) btn.disabled = !anyNow || state.review.rewriteStatus.type === 'loading';
+      });
+    });
+  }
+
+  async function handleRewrite() {
+    const review = state.review;
+    if (!review) return;
+    const tags = $('fieldTags').value.split(',').map(t => t.trim()).filter(Boolean);
+    const affectedServices = $('fieldServices').value.split(',').map(s => s.trim()).filter(Boolean);
+    const originalContext = $('fieldContext').value.trim();
+
+    const clarifications = (review.suggestions || []).map((s, i) => {
+      const q = (review.editedQuestions[i] != null) ? review.editedQuestions[i] : s;
+      const a = (review.userAnswers[i] != null) ? review.userAnswers[i] : '';
+      return { question: q, answer: a };
+    }).filter(c => c.question && c.answer && c.answer.trim());
+
+    if (clarifications.length === 0) {
+      review.rewriteStatus = { type: 'error', msg: 'Fill at least one answer first' };
+      renderReviewPane();
+      return;
+    }
+
+    review.rewriteStatus = { type: 'loading', msg: '' };
+    renderReviewPane();
+    try {
+      const result = await api.rewrite({
+        originalContext, tags, affectedServices, clarifications,
+      });
+      review.rewrittenContext = result.context;
+      review.rewriteStatus = { type: 'success', msg: 'Rewrite ready — review and apply' };
+    } catch (e) {
+      review.rewriteStatus = { type: 'error', msg: e.message || 'Rewrite failed' };
+    } finally {
+      renderReviewPane();
+    }
   }
 
   async function handleFindAnswer(index) {

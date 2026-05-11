@@ -20,6 +20,8 @@ public sealed record ClarificationAnswer(
     string Answer,
     IReadOnlyList<string> Evidence);
 
+public sealed record ConfirmedClarification(string Question, string Answer);
+
 public interface ILlmService
 {
     Task<ExtractedBugFields> ExtractBugFieldsAsync(string sourceText, CancellationToken ct);
@@ -41,6 +43,14 @@ public interface ILlmService
         string draftContext,
         IReadOnlyList<string> tags,
         IReadOnlyList<string> affectedServices,
+        string repoSnapshot,
+        CancellationToken ct);
+
+    Task<string> RewriteContextWithAnswersAsync(
+        string originalContext,
+        IReadOnlyList<string> tags,
+        IReadOnlyList<string> affectedServices,
+        IReadOnlyList<ConfirmedClarification> clarifications,
         string repoSnapshot,
         CancellationToken ct);
 }

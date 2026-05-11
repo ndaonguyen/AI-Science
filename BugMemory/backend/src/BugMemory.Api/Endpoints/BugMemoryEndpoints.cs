@@ -141,5 +141,28 @@ public static class BugMemoryEndpoints
                 return Results.BadRequest(new { error = ex.Message });
             }
         });
+
+        group.MapPost("review/rewrite", async (RewriteContextRequest request, RewriteContextUseCase useCase, CancellationToken ct) =>
+        {
+            try
+            {
+                var clarifications = (request.Clarifications ?? new())
+                    .Select(c => new ClarificationInput(c.Question, c.Answer))
+                    .ToList();
+
+                var result = await useCase.ExecuteAsync(
+                    new RewriteContextCommand(
+                        request.OriginalContext,
+                        request.Tags ?? new(),
+                        request.AffectedServices ?? new(),
+                        clarifications),
+                    ct);
+                return Results.Ok(result);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
     }
 }

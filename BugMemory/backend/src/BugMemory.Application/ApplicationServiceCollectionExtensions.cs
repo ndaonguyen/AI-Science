@@ -17,6 +17,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<ExtractBugFieldsUseCase>();
         services.AddScoped<ReviewContextUseCase>();
         services.AddScoped<AnswerClarificationUseCase>();
+        services.AddScoped<RewriteContextUseCase>();
         return services;
     }
 }
