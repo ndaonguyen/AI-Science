@@ -13,6 +13,9 @@ public sealed class BugMemoryEntry
     public IReadOnlyList<string> Links { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
+    public ReviewHistory? ReviewHistory { get; private set; }
+
+    public void SetReviewHistory(ReviewHistory? history) => ReviewHistory = history;
 
     private BugMemoryEntry(
         Guid id,

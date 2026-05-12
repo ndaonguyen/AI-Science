@@ -35,7 +35,8 @@ public static class BugMemoryEndpoints
                         request.RootCause,
                         request.Solution,
                         request.AffectedServices,
-                        request.Links),
+                        request.Links,
+                        request.ReviewHistory),
                     ct);
                 return Results.Created($"/api/bugs/{dto.Id}", dto);
             }
@@ -59,7 +60,8 @@ public static class BugMemoryEndpoints
                         request.RootCause,
                         request.Solution,
                         request.AffectedServices,
-                        request.Links),
+                        request.Links,
+                        request.ReviewHistory),
                     ct);
                 return dto is null ? Results.NotFound() : Results.Ok(dto);
             }

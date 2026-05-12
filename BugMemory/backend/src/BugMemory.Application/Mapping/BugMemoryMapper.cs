@@ -17,5 +17,16 @@ internal static class BugMemoryMapper
             entry.AffectedServices,
             entry.Links,
             entry.CreatedAt,
-            entry.UpdatedAt);
+            entry.UpdatedAt,
+            entry.ReviewHistory is null ? null : ToDto(entry.ReviewHistory));
+
+    private static ReviewHistoryDto ToDto(ReviewHistory h) =>
+        new(
+            h.Summary,
+            h.Clarifications.Select(c => new ReviewClarificationDto(
+                c.Question, c.Answer, c.AiAnswer, c.Evidence)).ToList(),
+            h.ScannedRepos,
+            h.UnconfiguredServices,
+            h.RewrittenContext,
+            h.ReviewedAt);
 }

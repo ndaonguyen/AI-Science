@@ -14,7 +14,8 @@ public sealed record UpdateBugMemoryCommand(
     string RootCause,
     string Solution,
     IReadOnlyList<string>? AffectedServices,
-    IReadOnlyList<string>? Links);
+    IReadOnlyList<string>? Links,
+    ReviewHistoryDto? ReviewHistory = null);
 
 public sealed class UpdateBugMemoryUseCase
 {
@@ -50,6 +51,12 @@ public sealed class UpdateBugMemoryUseCase
             command.AffectedServices,
             command.Links,
             _clock.UtcNow);
+
+        if (command.ReviewHistory is not null)
+        {
+            entry.SetReviewHistory(CreateBugMemoryUseCase.ToDomain(command.ReviewHistory, _clock.UtcNow));
+        }
+
         await _repository.UpdateAsync(entry, ct);
 
         var embedding = await _embeddings.EmbedAsync(entry.ToEmbeddingText(), ct);

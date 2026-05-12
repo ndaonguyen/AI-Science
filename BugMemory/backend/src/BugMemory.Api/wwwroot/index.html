@@ -9,7 +9,7 @@
        served as static files from wwwroot by ASP.NET; default cache
        headers are short but not zero. Same pattern as DistributedDebugger
        uses for its v2/v3 pages. -->
-  <link rel="stylesheet" href="app.css?v=5">
+  <link rel="stylesheet" href="app.css?v=6">
 </head>
 <body>
   <div class="app">
@@ -133,6 +133,9 @@
 
       <div class="row end" style="gap: 8px; margin-top: 8px;">
         <span class="status" id="saveStatus" style="margin-right: auto;"></span>
+        <label class="save-review-toggle" id="saveReviewToggleWrap" style="display: none;">
+          <input type="checkbox" id="saveReviewToggle"> Save AI review history
+        </label>
         <button id="cancelEdit" style="display: none;">Cancel</button>
         <button id="clearForm">Clear</button>
         <button class="primary" id="saveButton">Save</button>
@@ -154,6 +157,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

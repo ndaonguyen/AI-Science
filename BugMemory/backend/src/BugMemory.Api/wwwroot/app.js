@@ -258,6 +258,15 @@
     // Review button + pane
     $('reviewButton').disabled = state.reviewStatus.type === 'loading';
     renderReviewPane();
+
+    // Save AI review history checkbox — only show when a review exists
+    const toggleWrap = $('saveReviewToggleWrap');
+    if (state.review) {
+      toggleWrap.style.display = '';
+    } else {
+      toggleWrap.style.display = 'none';
+      $('saveReviewToggle').checked = false;
+    }
   }
 
   function renderReviewPane() {
@@ -377,6 +386,30 @@
         if (btn) btn.disabled = !anyNow || state.review.rewriteStatus.type === 'loading';
       });
     });
+  }
+
+  function buildReviewHistoryPayload() {
+    const r = state.review;
+    if (!r) return null;
+    const clarifications = (r.suggestions || []).map((s, i) => {
+      const q = (r.editedQuestions && r.editedQuestions[i] != null) ? r.editedQuestions[i] : s;
+      const a = (r.userAnswers && r.userAnswers[i] != null) ? r.userAnswers[i] : '';
+      const ai = r.answers && r.answers[i] && r.answers[i].status === 'success'
+        ? (r.answers[i].answer || '')
+        : '';
+      const evidence = r.answers && r.answers[i] && r.answers[i].status === 'success'
+        ? (r.answers[i].evidence || [])
+        : [];
+      return { question: q, answer: a, aiAnswer: ai, evidence };
+    });
+    return {
+      summary: r.summary || '',
+      clarifications,
+      scannedRepos: r.scannedRepos || [],
+      unconfiguredServices: r.unconfiguredServices || [],
+      rewrittenContext: r.rewrittenContext || '',
+      reviewedAt: new Date().toISOString(),
+    };
   }
 
   async function handleRewrite() {
@@ -532,6 +565,11 @@
       affectedServices: services.split(',').map(s => s.trim()).filter(Boolean),
       links: linksRaw.split(/[\n,]/).map(l => l.trim()).filter(Boolean),
     };
+
+    // Attach AI review history if the user opted in
+    if (state.review && $('saveReviewToggle').checked) {
+      body.reviewHistory = buildReviewHistoryPayload();
+    }
 
     state.saveStatus = { type: 'loading', msg: 'Saving...' };
     renderAddTab();

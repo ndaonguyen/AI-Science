@@ -23,7 +23,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddHttpClient<IEmbeddingService, OpenAiEmbeddingService>();
         services.AddHttpClient<ILlmService, OpenAiLlmService>();
         services.AddHttpClient<IVectorStore, QdrantVectorStore>();
-        services.AddSingleton<IRepoCodeScanner, LocalRepoCodeScanner>();
+
+        services.AddMemoryCache();
+        services.AddSingleton<LocalRepoCodeScanner>();
+        services.AddSingleton<IRepoCodeScanner, CachingRepoCodeScanner>();
 
         return services;
     }

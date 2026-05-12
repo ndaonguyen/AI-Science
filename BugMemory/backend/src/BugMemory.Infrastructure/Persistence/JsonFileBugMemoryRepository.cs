@@ -27,7 +27,22 @@ internal sealed record BugMemoryRecord(
     public MemoryKind Kind { get; init; } = MemoryKind.Bug;
     public List<string>? AffectedServices { get; init; }
     public List<string>? Links { get; init; }
+    public ReviewHistoryRecord? ReviewHistory { get; init; }
 }
+
+internal sealed record ReviewHistoryRecord(
+    string Summary,
+    List<ReviewClarificationRecord> Clarifications,
+    List<string> ScannedRepos,
+    List<string> UnconfiguredServices,
+    string RewrittenContext,
+    DateTimeOffset ReviewedAt);
+
+internal sealed record ReviewClarificationRecord(
+    string Question,
+    string Answer,
+    string AiAnswer,
+    List<string> Evidence);
 
 public sealed class JsonFileBugMemoryRepository : IBugMemoryRepository
 {
@@ -73,6 +88,10 @@ public sealed class JsonFileBugMemoryRepository : IBugMemoryRepository
                         r.Links,
                         r.CreatedAt,
                         r.UpdatedAt);
+                    if (r.ReviewHistory is not null)
+                    {
+                        entry.SetReviewHistory(ToDomain(r.ReviewHistory));
+                    }
                     _store[r.Id] = entry;
                 }
             }
@@ -93,6 +112,7 @@ public sealed class JsonFileBugMemoryRepository : IBugMemoryRepository
                 Kind = e.Kind,
                 AffectedServices = e.AffectedServices.ToList(),
                 Links = e.Links.ToList(),
+                ReviewHistory = e.ReviewHistory is null ? null : ToRecord(e.ReviewHistory),
             })
             .ToList();
         var dir = Path.GetDirectoryName(_filePath);
@@ -157,4 +177,31 @@ public sealed class JsonFileBugMemoryRepository : IBugMemoryRepository
             _writeLock.Release();
         }
     }
+
+    private static ReviewHistory ToDomain(ReviewHistoryRecord r) => new()
+    {
+        Summary = r.Summary,
+        Clarifications = r.Clarifications
+            .Select(c => new ReviewClarification
+            {
+                Question = c.Question,
+                Answer = c.Answer,
+                AiAnswer = c.AiAnswer,
+                Evidence = c.Evidence,
+            })
+            .ToList(),
+        ScannedRepos = r.ScannedRepos,
+        UnconfiguredServices = r.UnconfiguredServices,
+        RewrittenContext = r.RewrittenContext,
+        ReviewedAt = r.ReviewedAt,
+    };
+
+    private static ReviewHistoryRecord ToRecord(ReviewHistory h) => new(
+        h.Summary,
+        h.Clarifications.Select(c => new ReviewClarificationRecord(
+            c.Question, c.Answer, c.AiAnswer, c.Evidence.ToList())).ToList(),
+        h.ScannedRepos.ToList(),
+        h.UnconfiguredServices.ToList(),
+        h.RewrittenContext,
+        h.ReviewedAt);
 }

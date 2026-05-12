@@ -14,7 +14,8 @@ public sealed record CreateBugMemoryCommand(
     string RootCause,
     string Solution,
     IReadOnlyList<string>? AffectedServices,
-    IReadOnlyList<string>? Links);
+    IReadOnlyList<string>? Links,
+    ReviewHistoryDto? ReviewHistory = null);
 
 public sealed class CreateBugMemoryUseCase
 {
@@ -51,6 +52,11 @@ public sealed class CreateBugMemoryUseCase
             command.Links,
             _clock.UtcNow);
 
+        if (command.ReviewHistory is not null)
+        {
+            entry.SetReviewHistory(ToDomain(command.ReviewHistory, _clock.UtcNow));
+        }
+
         await _repository.AddAsync(entry, ct);
 
         var embedding = await _embeddings.EmbedAsync(entry.ToEmbeddingText(), ct);
@@ -63,4 +69,22 @@ public sealed class CreateBugMemoryUseCase
         _logger.LogInformation("Created {Kind} memory {Id}", entry.Kind, entry.Id);
         return entry.ToDto();
     }
+
+    internal static ReviewHistory ToDomain(ReviewHistoryDto dto, DateTimeOffset now) => new()
+    {
+        Summary = dto.Summary ?? string.Empty,
+        Clarifications = (dto.Clarifications ?? Array.Empty<ReviewClarificationDto>())
+            .Select(c => new ReviewClarification
+            {
+                Question = c.Question ?? string.Empty,
+                Answer = c.Answer ?? string.Empty,
+                AiAnswer = c.AiAnswer ?? string.Empty,
+                Evidence = c.Evidence ?? Array.Empty<string>(),
+            })
+            .ToList(),
+        ScannedRepos = dto.ScannedRepos ?? Array.Empty<string>(),
+        UnconfiguredServices = dto.UnconfiguredServices ?? Array.Empty<string>(),
+        RewrittenContext = dto.RewrittenContext ?? string.Empty,
+        ReviewedAt = dto.ReviewedAt == default ? now : dto.ReviewedAt,
+    };
 }

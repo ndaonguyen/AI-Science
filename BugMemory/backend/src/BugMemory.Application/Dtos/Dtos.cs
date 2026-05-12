@@ -13,7 +13,22 @@ public sealed record BugMemoryDto(
     IReadOnlyList<string> AffectedServices,
     IReadOnlyList<string> Links,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    ReviewHistoryDto? ReviewHistory);
+
+public sealed record ReviewHistoryDto(
+    string Summary,
+    IReadOnlyList<ReviewClarificationDto> Clarifications,
+    IReadOnlyList<string> ScannedRepos,
+    IReadOnlyList<string> UnconfiguredServices,
+    string RewrittenContext,
+    DateTimeOffset ReviewedAt);
+
+public sealed record ReviewClarificationDto(
+    string Question,
+    string Answer,
+    string AiAnswer,
+    IReadOnlyList<string> Evidence);
 
 public sealed record SearchResultDto(
     BugMemoryDto Entry,

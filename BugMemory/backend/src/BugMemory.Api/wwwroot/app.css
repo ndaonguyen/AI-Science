@@ -596,6 +596,21 @@ button.small {
   overflow-y: auto;
 }
 
+.save-review-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.save-review-toggle input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
 @media (max-width: 720px) {
   .context-row {
     grid-template-columns: 1fr;
