@@ -210,6 +210,7 @@ public class AskBugMemoryUseCaseTests
             _vectorStore.Object,
             _repository.Object,
             _llm.Object,
+            Array.Empty<IExternalSearchProvider>(),
             NullLogger<AskBugMemoryUseCase>.Instance);
     }
 

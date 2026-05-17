@@ -38,6 +38,41 @@ public sealed record RagResponseDto(
     string Answer,
     IReadOnlyList<SearchResultDto> Citations);
 
+/// <summary>
+/// One external hit returned to the frontend — Jira ticket, GitHub
+/// commit, etc. Mirrors <see cref="Application.Abstractions.ExternalHit"/>
+/// minus the LLM-internal Snippet field (which is fed to the model but
+/// not shown verbatim in the UI; the UI shows Title + the source link).
+/// </summary>
+public sealed record ExternalCitationDto(
+    string Provider,
+    string ExternalId,
+    string Url,
+    string Title,
+    DateTimeOffset? When,
+    double Score,
+    // We DO surface the snippet to the UI as a 'Save as bug memory'
+    // pre-fill source. The UI doesn't render it inline (would be noisy)
+    // but the save flow round-trips it back to /api/extract.
+    string Snippet);
+
+/// <summary>
+/// Mixed response: an answer plus citations from any combination of
+/// saved bugs and external sources. The two citation lists are
+/// independent — either may be empty depending on what the LLM cited.
+/// </summary>
+public sealed record MixedRagResponseDto(
+    string Answer,
+    IReadOnlyList<SearchResultDto> BugCitations,
+    IReadOnlyList<ExternalCitationDto> ExternalCitations,
+    // Diagnostic info: which sources were queried, which failed, etc.
+    // The UI doesn't have to render this but it makes debugging
+    // ("why isn't Jira showing up?") tractable from the response alone.
+    IReadOnlyList<string> SourcesQueried,
+    IReadOnlyList<SourceErrorDto> SourceErrors);
+
+public sealed record SourceErrorDto(string Source, string Error);
+
 public sealed record ExtractionResultDto(
     string Title,
     IReadOnlyList<string> Tags,
