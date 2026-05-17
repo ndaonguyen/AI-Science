@@ -25,8 +25,15 @@
     entriesError: null,
     listKind: 'all',            // 'all' | 'Bug' | 'Feature' — All-tab kind filter
     askLoading: false,
-    askResponse: null,          // RagResponse | null
+    askResponse: null,          // MixedRagResponseDto | null — new shape
+                                // (bugCitations, externalCitations,
+                                // sourcesQueried, sourceErrors)
     askError: null,
+    // Which sources to query on the next Ask. Defaults to saved bugs
+    // only — matches the cheapest fast path and means a user who has
+    // never configured Jira/GitHub never hits a sourceError they didn't
+    // ask for. Mutated by the checkbox handlers; sent on each ask.
+    selectedSources: ['bugs'],
     importOpen: false,
     importStatus: { type: 'idle', msg: '' },
     reviewStatus: { type: 'idle', msg: '' },
@@ -48,7 +55,13 @@
     update:  (id, body)      => req(`/api/bugs/${id}`, { method: 'PUT',  body: JSON.stringify(body) }),
     remove:  (id)            => req(`/api/bugs/${id}`, { method: 'DELETE' }),
     search:  (query, topK=5) => req('/api/search',   { method: 'POST', body: JSON.stringify({ query, topK }) }),
-    ask:     (question, topK=5) => req('/api/ask',   { method: 'POST', body: JSON.stringify({ question, topK }) }),
+    // askMixed is the only Ask path the frontend uses. The legacy /api/ask
+    // endpoint stays on the server for the eval harness, but the UI
+    // always uses /api/ask-mixed so we have one code path. When only
+    // "bugs" is selected, ask-mixed produces an equivalent answer with
+    // an extra bit of envelope data (sourcesQueried, sourceErrors).
+    askMixed: (question, topK=5, sources=['bugs']) =>
+        req('/api/ask-mixed', { method: 'POST', body: JSON.stringify({ question, topK, sources }) }),
     extract: (sourceText)    => req('/api/extract',  { method: 'POST', body: JSON.stringify({ sourceText }) }),
     review:  (body)          => req('/api/review',   { method: 'POST', body: JSON.stringify(body) }),
     findAnswer: (body)       => req('/api/review/answer', { method: 'POST', body: JSON.stringify(body) }),
@@ -129,11 +142,16 @@
   async function handleAsk() {
     const q = $('askQuestion').value.trim();
     if (!q) return;
+    if (state.selectedSources.length === 0) {
+      state.askError = 'Pick at least one source above (Saved bugs / Jira / GitHub).';
+      renderAskTab();
+      return;
+    }
     state.askLoading = true;
     state.askError = null;
     renderAskTab();
     try {
-      state.askResponse = await api.ask(q, 5);
+      state.askResponse = await api.askMixed(q, 5, state.selectedSources);
     } catch (e) {
       state.askError = e.message || 'Request failed';
       state.askResponse = null;
@@ -158,24 +176,163 @@
     }
 
     const resultEl = $('askResult');
-    if (state.askResponse) {
-      resultEl.style.display = '';
-      $('askAnswerText').textContent = state.askResponse.answer;
-      const cites = state.askResponse.citations || [];
-      const label = $('askSourcesLabel');
-      const sourcesEl = $('askSources');
-      if (cites.length > 0) {
-        label.style.display = '';
-        label.textContent = `Sources (${cites.length})`;
-        sourcesEl.innerHTML = cites
-          .map(c => renderEntryCardHtml(c.entry, { score: c.score }))
-          .join('');
-      } else {
-        label.style.display = 'none';
-        sourcesEl.innerHTML = '';
-      }
-    } else {
+    if (!state.askResponse) {
       resultEl.style.display = 'none';
+      return;
+    }
+    resultEl.style.display = '';
+    $('askAnswerText').textContent = state.askResponse.answer;
+
+    // ---- source errors (non-blocking warnings above citations) ----
+    // Server reports per-source failures in sourceErrors. We show them
+    // as a friendly callout — the answer is still rendered above, so
+    // this is "FYI, X didn't search" rather than "the whole thing failed".
+    const errors = state.askResponse.sourceErrors || [];
+    const errorsEl = $('askSourceErrors');
+    if (errors.length > 0) {
+      errorsEl.style.display = '';
+      const items = errors
+        .map(e => `<li><strong>${escape(e.source)}:</strong> ${escape(e.error)}</li>`)
+        .join('');
+      errorsEl.innerHTML = `<div class="source-warnings">Some sources couldn't be searched:<ul>${items}</ul></div>`;
+    } else {
+      errorsEl.style.display = 'none';
+      errorsEl.innerHTML = '';
+    }
+
+    // ---- saved-bug citations (existing card style) ----
+    const bugCites = state.askResponse.bugCitations || [];
+    const bugLabel = $('askSourcesLabel');
+    const bugSourcesEl = $('askSources');
+    if (bugCites.length > 0) {
+      bugLabel.style.display = '';
+      bugLabel.textContent = `Saved bugs (${bugCites.length})`;
+      bugSourcesEl.innerHTML = bugCites
+        .map(c => renderEntryCardHtml(c.entry, { score: c.score }))
+        .join('');
+    } else {
+      bugLabel.style.display = 'none';
+      bugSourcesEl.innerHTML = '';
+    }
+
+    // ---- external citations (new card style) ----
+    const externalCites = state.askResponse.externalCitations || [];
+    const extLabel = $('askExternalLabel');
+    const extEl = $('askExternal');
+    if (externalCites.length > 0) {
+      extLabel.style.display = '';
+      extLabel.textContent = `External (${externalCites.length})`;
+      extEl.innerHTML = externalCites
+        .map((c, i) => renderExternalCitationHtml(c, i))
+        .join('');
+      // Wire up Save-as-bug-memory buttons after innerHTML write.
+      extEl.querySelectorAll('button[data-action="save-external"]').forEach(btn => {
+        btn.addEventListener('click', () => handleSaveExternalAsBug(parseInt(btn.dataset.idx, 10)));
+      });
+    } else {
+      extLabel.style.display = 'none';
+      extEl.innerHTML = '';
+    }
+  }
+
+  // External-citation card. Renders as a compact card with provider
+  // badge, title (linked to source URL), when (if present), and a
+  // Save-as-bug-memory action. The snippet (raw ticket/commit content)
+  // is NOT rendered inline — it'd be noisy and verbose — but lives on
+  // the citation object so the save flow can round-trip it through
+  // /api/extract for prefill.
+  function renderExternalCitationHtml(cite, index) {
+    const provider = (cite.provider || 'unknown').toLowerCase();
+    const when = cite.when
+      ? new Date(cite.when).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+      : '';
+    const scoreTag = cite.score != null && cite.score > 0 && cite.score < 1
+      ? ` · ${Math.round(cite.score * 100)}% match`
+      : '';
+    return `
+      <div class="external-card">
+        <div class="external-card-header">
+          <div style="flex: 1; min-width: 0;">
+            <h4 class="external-card-title">
+              <a href="${escape(cite.url)}" target="_blank" rel="noopener noreferrer">${escape(cite.title)}</a>
+            </h4>
+            <div class="external-card-meta">
+              <span class="provider-badge ${escape(provider)}">${escape(provider)}</span>
+              <span>${escape(cite.externalId)}</span>
+              ${when ? `<span>· ${escape(when)}</span>` : ''}
+              ${scoreTag ? `<span>${scoreTag}</span>` : ''}
+            </div>
+          </div>
+        </div>
+        <div class="external-card-actions">
+          <a href="${escape(cite.url)}" target="_blank" rel="noopener noreferrer">Open in ${escape(provider)} →</a>
+          <button class="small" data-action="save-external" data-idx="${index}">Save as bug memory</button>
+        </div>
+      </div>`;
+  }
+
+  // Save-as-bug-memory flow.
+  //
+  // We have the raw snippet on the citation already (server included it
+  // in the response). So:
+  //   1. POST /api/extract with the snippet → get parsed fields back
+  //   2. Populate the Add tab fields
+  //   3. Switch to the Add tab
+  // No new endpoint needed; this reuses the same Extract pipeline that
+  // pasted-Slack-thread import uses. The user still reviews + saves
+  // manually — we don't auto-save anything.
+  async function handleSaveExternalAsBug(index) {
+    const cite = (state.askResponse?.externalCitations || [])[index];
+    if (!cite) return;
+    if (!cite.snippet || cite.snippet.length < 30) {
+      alert('This citation has no usable content to extract from.');
+      return;
+    }
+    // Pre-clear any current Add-tab content so we don't merge half-edits.
+    // The Extract path also flashes the form on success so the user knows
+    // it landed.
+    clearForm();
+    state.editing = null;
+    switchTab('add');
+    state.importStatus = { type: 'loading', msg: `Extracting fields from ${cite.provider} ${cite.externalId}...` };
+    renderAddTab();
+    try {
+      const result = await api.extract(cite.snippet);
+      $('fieldTitle').value     = result.title     || cite.title || '';
+      $('fieldTags').value      = (result.tags || []).join(', ');
+      $('fieldContext').value   = result.context   || '';
+      $('fieldRootCause').value = result.rootCause || '';
+      $('fieldSolution').value  = result.solution  || '';
+      // Add the source URL to the Links field if present. The Add form
+      // has a Links input wired up by the existing code — bug memories
+      // can carry an array of related URLs, which is exactly what we
+      // want for "this came from Jira ticket X" provenance. Splits by
+      // newline OR comma to match the convention used elsewhere
+      // (handleSave does the same split when serialising).
+      const linksEl = $('fieldLinks');
+      if (linksEl) {
+        const existing = linksEl.value
+          ? linksEl.value.split(/[\n,]/).map(s => s.trim()).filter(Boolean)
+          : [];
+        if (!existing.includes(cite.url)) {
+          existing.push(cite.url);
+          linksEl.value = existing.join('\n');
+        }
+      }
+      // Brief flash on the form to draw the eye to new content.
+      const formEl = $('addForm');
+      if (formEl) {
+        formEl.classList.add('flash');
+        setTimeout(() => formEl.classList.remove('flash'), 1400);
+      }
+      state.importStatus = {
+        type: 'success',
+        msg: `Pre-filled from ${cite.provider} ${cite.externalId}. Review and save.`,
+      };
+    } catch (e) {
+      state.importStatus = { type: 'error', msg: e.message || 'Extraction failed' };
+    } finally {
+      renderAddTab();
     }
   }
 
@@ -775,6 +932,18 @@
     $('askQuestion').addEventListener('input', renderAskTab);
     $('askQuestion').addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAsk();
+    });
+
+    // Source-toggle checkboxes (Saved bugs / Jira / GitHub). The checked
+    // state of each maps directly to state.selectedSources; we don't
+    // bother validating per-source-known here — the server already
+    // ignores unknown source names with a warning.
+    document.querySelectorAll('.source-toggle input[type="checkbox"][data-source]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        state.selectedSources = Array.from(
+          document.querySelectorAll('.source-toggle input[type="checkbox"][data-source]:checked')
+        ).map(c => c.dataset.source);
+      });
     });
 
     // Add — kind toggle

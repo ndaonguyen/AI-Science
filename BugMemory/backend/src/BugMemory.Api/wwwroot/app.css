@@ -616,3 +616,114 @@ button.small {
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================
+   Source toggles + external-citation cards (Ask tab)
+   Added in PR feature/bugmemory-source-toggle-ui.
+   ============================================================ */
+
+/* Three pill-style toggles above the Ask button. Keeps them small so
+   the eye is still drawn to the textarea and the primary Ask button. */
+.source-toggles {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.source-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--fg);
+  cursor: pointer;
+  user-select: none;
+}
+.source-toggle input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Non-blocking warnings for sources that errored at retrieval time.
+   Distinct visual weight from .status.error (which is for blocking
+   failures) — these are amber/info, not red. */
+.source-warnings {
+  margin: 12px 0;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--accent-bg) 50%, transparent);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  font-size: 13px;
+}
+.source-warnings ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.source-warnings li {
+  margin: 2px 0;
+  color: var(--text-faint);
+}
+.source-warnings li strong {
+  color: var(--fg);
+}
+
+/* External citation card. Smaller than a saved-bug card because there's
+   less to show — title, provider badge, link, save button. The snippet
+   is kept on the JS object but not rendered inline (would be noisy). */
+.external-card {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: var(--bg);
+}
+.external-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.external-card-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  word-break: break-word;
+}
+.external-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.external-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.external-card-actions a {
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.external-card-actions a:hover {
+  text-decoration: underline;
+}
+
+/* Provider badges. Distinct colors so Jira vs GitHub is recognizable
+   at a glance. Colors chosen for sufficient contrast in both light
+   and dark mode without separate dark overrides. */
+.provider-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #ffffff;
+}
+.provider-badge.jira   { background: #0052cc; }
+.provider-badge.github { background: #24292f; }
