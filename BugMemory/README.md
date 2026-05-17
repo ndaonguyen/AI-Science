@@ -135,8 +135,67 @@ copying an existing file and editing. The seed corpus is `eval/seed-bugs.yaml`.
 | `PUT`    | `/api/bugs/{id}`    | Update a bug (re-indexes) |
 | `DELETE` | `/api/bugs/{id}`    | Delete from store and vector index |
 | `POST`   | `/api/search`       | Vector similarity search → ranked list |
-| `POST`   | `/api/ask`          | RAG: retrieve + generate grounded answer |
+| `POST`   | `/api/ask`          | RAG over saved bugs only — original endpoint |
+| `POST`   | `/api/ask-mixed`    | RAG over saved bugs + external sources (Jira, GitHub) |
 | `POST`   | `/api/extract`      | Pull structured fields from raw text |
+
+## External sources (Jira and GitHub)
+
+`/api/ask-mixed` supports retrieving from external knowledge sources alongside saved bug memories. The request:
+
+```json
+POST /api/ask-mixed
+{
+  "question": "why did we add blockId to content-media-service?",
+  "topK": 5,
+  "sources": ["bugs", "jira", "github"]
+}
+```
+
+Source names:
+- `"bugs"` — the vector-indexed saved bug memories (always available)
+- `"jira"` — Jira Cloud tickets (requires `Jira:*` config in `appsettings.Development.json`)
+- `"github"` — GitHub commits in your allowlisted repos (requires `GitHub:*` config)
+
+Omit `sources` entirely (or pass empty list) and it defaults to `["bugs"]`, matching `/api/ask` behavior.
+
+The response includes citations from each source kind plus diagnostic info on which sources were queried and whether any errored:
+
+```json
+{
+  "answer": "...",
+  "bugCitations": [...],
+  "externalCitations": [
+    { "provider": "jira", "externalId": "COCO-1234", "url": "...", "title": "...", "score": 1.0 }
+  ],
+  "sourcesQueried": ["bugs", "jira"],
+  "sourceErrors": []
+}
+```
+
+Failure mode: if one source errors (Jira unreachable, GitHub rate-limited), it's recorded in `sourceErrors` and the answer is produced from whatever did work. Total failure (all sources empty + errored) returns a clear "no usable context" message.
+
+### Setting up Jira
+
+1. Generate an Atlassian API token at https://id.atlassian.com/manage-profile/security/api-tokens
+2. Add the `Jira` block to your gitignored `appsettings.Development.json` (see `appsettings.Development.json.example` for template)
+3. `BaseUrl` is your Atlassian Cloud URL (`https://your-org.atlassian.net`); `Email` is the account that owns the token
+4. `DefaultJqlFilter` is optional — useful for scoping to a specific project (`project = COCO`) or status (`statusCategory = Done`)
+
+### Setting up GitHub
+
+1. Generate a fine-grained PAT at https://github.com/settings/tokens?type=beta
+   - Scope to the specific repos you want this tool to read
+   - Permissions: `Contents: Read-only`, `Metadata: Read-only`
+2. Add the `GitHub` block to `appsettings.Development.json` with the token and a `RepoAllowlist` of `"owner/repo"` strings
+
+`RepoAllowlist` is required — empty list means the GitHub provider reports `IsConfigured = false` and gets skipped. This is deliberate to prevent accidental global-search.
+
+### Honest limitations
+
+- **GitHub search is commit-message + diff-content search, not `git log -S` pickaxe.** If you want to find the commit that first added a specific string, the existing `LocalRepoCodeScanner` (used by the write-side `/api/review` flow) does that against local clones. The GitHub provider here uses GitHub's commit search API, which is good for "find commits mentioning X" but not "find when X was introduced."
+- **Sending repo/ticket content to OpenAI.** External hits get fed to the LLM as context — that means commits and tickets are sent to the OpenAI Chat Completions API as prompt content. If your org has policy concerns about third-party LLM access to source code or ticket data, configure the providers accordingly (smaller allowlist, JQL filter to non-sensitive projects, etc.) or don't enable them.
+- **Rate limits.** Jira: typical org-tier rate limits apply. GitHub: 30 req/min for authenticated commits search (stricter than other endpoints). The Ask use case does ~2 GitHub API calls per query (search + paging if allowlist is large). Plenty of headroom for personal use; if you ask 30+ questions per minute the rate limits will fire.
 
 ## Swapping out providers
 

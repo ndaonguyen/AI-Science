@@ -94,6 +94,21 @@ public static class BugMemoryEndpoints
             return Results.Ok(response);
         });
 
+        group.MapPost("ask-mixed", async (AskWithSourcesRequest request, AskBugMemoryUseCase useCase, CancellationToken ct) =>
+        {
+            // Source-aware Ask. Same use case, different entry point —
+            // the frontend's tab toggle UI sends this when the user has
+            // picked specific sources. Legacy /api/ask stays available
+            // for callers that only want saved bugs (eval harness etc).
+            var response = await useCase.ExecuteWithSourcesAsync(
+                new AskWithSourcesQuery(
+                    request.Question,
+                    request.TopK ?? 5,
+                    request.Sources ?? new List<string>()),
+                ct);
+            return Results.Ok(response);
+        });
+
         group.MapPost("extract", async (ExtractRequest request, ExtractBugFieldsUseCase useCase, CancellationToken ct) =>
         {
             try

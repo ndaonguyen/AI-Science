@@ -329,6 +329,108 @@ public sealed class OpenAiLlmService : ILlmService
         return new RagAnswer(parsed.Answer ?? string.Empty, citedIds);
     }
 
+    public async Task<MixedRagAnswer> AnswerWithMixedContextAsync(
+        string question,
+        IReadOnlyList<MixedContext> context,
+        CancellationToken ct)
+    {
+        // Build the context block with explicit provenance per source.
+        // The LLM needs to know how to cite each one back:
+        //   - Saved bug → cite by GUID (matches CitedEntryIds shape)
+        //   - External  → cite by "provider:externalId" (matches CitedExternalIds shape)
+        // Mixing them in one prompt only works if the model can tell
+        // them apart, hence the explicit "[Bug ID: ...]" vs
+        // "[External: provider COCO-1234]" labels.
+        var blocks = new List<string>(context.Count);
+        for (int i = 0; i < context.Count; i++)
+        {
+            var c = context[i];
+            string header;
+            if (c.InternalEntryId.HasValue)
+            {
+                header = $"[Source {i + 1}] (saved bug, id: {c.InternalEntryId.Value}, score: {c.Score:F2})";
+            }
+            else
+            {
+                header = $"[Source {i + 1}] (external: {c.ExternalProvider} {c.ExternalId}, " +
+                         $"title: \"{c.ExternalTitle}\", score: {c.Score:F2})";
+            }
+            blocks.Add($"{header}\n{c.Content}");
+        }
+        var contextBlock = string.Join("\n\n---\n\n", blocks);
+
+        var systemPrompt = $$"""
+            You answer the user's question using ONLY the sources provided below. Sources come from two kinds:
+            (1) saved bug memory entries (cite by GUID)
+            (2) external sources like Jira tickets or GitHub commits (cite by "provider:externalId")
+
+            Rules:
+            - Ground every claim in the sources. If the sources don't answer the question, say so plainly — don't speculate.
+            - Reference sources naturally in prose (e.g. "from the Kafka retry ticket COCO-1234..." or "in the saved bug about blockId...") rather than dumping raw ids.
+            - When you reference an external source, the SHORT form is fine in prose (e.g. "COCO-1234"), but the full "provider:externalId" goes in citedExternalIds.
+            - Be concise and practical. Lead with the answer or fix, then context.
+            - Return TWO arrays at the end: citedBugIds (GUIDs of saved bugs you used) and citedExternalIds (provider:externalId strings of external sources you used). Empty arrays are fine.
+
+            Sources:
+            {{contextBlock}}
+
+            Respond with JSON only, no markdown, matching:
+            { "answer": "", "citedBugIds": [], "citedExternalIds": [] }
+
+            citedExternalIds entries should look like:
+              "jira:COCO-1234"  or  "github:owner/repo@abc1234"
+            (the prefix and id you see in the source header, separated by colon)
+            """;
+
+        var request = new ChatRequest(
+            _options.ChatModel,
+            new[]
+            {
+                new ChatMessage("system", systemPrompt),
+                new ChatMessage("user", question),
+            },
+            new ResponseFormat("json_object"),
+            Temperature: 0.3);
+
+        var response = await _http.PostAsJsonAsync("v1/chat/completions", request, ct);
+        await response.EnsureSuccessOrThrowWithBodyAsync("OpenAI", ct);
+        var payload = await response.Content.ReadFromJsonAsync<ChatResponse>(cancellationToken: ct)
+                      ?? throw new InvalidOperationException("Empty chat response");
+
+        var content = payload.Choices.FirstOrDefault()?.Message.Content
+                      ?? throw new InvalidOperationException("No content in chat response");
+
+        var parsed = JsonSerializer.Deserialize<MixedRagPayload>(content, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                     ?? throw new InvalidOperationException("Could not parse mixed-RAG JSON");
+
+        // Parse cited bug ids (GUIDs)
+        var citedBugIds = (parsed.CitedBugIds ?? new List<string>())
+            .Select(id => Guid.TryParse(id, out var g) ? g : (Guid?)null)
+            .Where(g => g.HasValue)
+            .Select(g => g!.Value)
+            .ToList();
+
+        // Parse cited external ids. We accept either "provider:externalId"
+        // or just "externalId" — the LLM occasionally drops the prefix
+        // when there's only one external source type. Strip the prefix
+        // if present so callers get the bare ExternalId back.
+        var citedExternalIds = (parsed.CitedExternalIds ?? new List<string>())
+            .Select(id =>
+            {
+                if (string.IsNullOrWhiteSpace(id)) return null;
+                var trimmed = id.Trim();
+                var colonIdx = trimmed.IndexOf(':');
+                return colonIdx > 0 && colonIdx < trimmed.Length - 1
+                    ? trimmed[(colonIdx + 1)..]
+                    : trimmed;
+            })
+            .Where(s => !string.IsNullOrEmpty(s))
+            .Select(s => s!)
+            .ToList();
+
+        return new MixedRagAnswer(parsed.Answer ?? string.Empty, citedBugIds, citedExternalIds);
+    }
+
     private sealed record ChatRequest(
         [property: JsonPropertyName("model")] string Model,
         [property: JsonPropertyName("messages")] IReadOnlyList<ChatMessage> Messages,
@@ -361,6 +463,13 @@ public sealed class OpenAiLlmService : ILlmService
     {
         public string? Answer { get; set; }
         public List<string>? CitedIds { get; set; }
+    }
+
+    private sealed class MixedRagPayload
+    {
+        public string? Answer { get; set; }
+        public List<string>? CitedBugIds { get; set; }
+        public List<string>? CitedExternalIds { get; set; }
     }
 
     private sealed class ReviewPayload

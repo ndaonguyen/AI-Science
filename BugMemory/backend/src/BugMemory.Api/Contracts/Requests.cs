@@ -29,6 +29,17 @@ public sealed record SearchRequest(string Query, int? TopK);
 
 public sealed record AskRequest(string Question, int? TopK);
 
+/// <summary>
+/// Source-aware Ask request. Sources is a list of stable source names:
+/// "bugs" (the saved vector store), "jira", "github". Order doesn't
+/// matter; duplicates are collapsed. Null/empty Sources defaults to
+/// saved bugs only, matching the legacy /api/ask endpoint behavior.
+/// </summary>
+public sealed record AskWithSourcesRequest(
+    string Question,
+    int? TopK,
+    List<string>? Sources);
+
 public sealed record ExtractRequest(string SourceText);
 
 public sealed record ReviewRequest(

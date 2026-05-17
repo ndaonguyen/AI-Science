@@ -1,14 +1,39 @@
 {
   "_comment": [
     "Copy this file to appsettings.Development.json (NOT committed) and fill",
-    "in your real OpenAI API key. Anything you add here overrides the same",
-    "keys in appsettings.json at runtime in the Development environment.",
+    "in your real keys. Anything you add here overrides the same keys in",
+    "appsettings.json at runtime in the Development environment.",
     "",
-    "Alternative: 'dotnet user-secrets set OpenAi:ApiKey sk-...' from this",
-    "folder, which is preferred because the secret never lives in the",
-    "repo's working tree at all."
+    "Alternative for OpenAi:ApiKey only: 'dotnet user-secrets set",
+    "OpenAi:ApiKey sk-...' from this folder, which is preferred because the",
+    "secret never lives in the repo's working tree at all. Jira and GitHub",
+    "tokens currently require this file.",
+    "",
+    "Jira section: optional. Without it, the Jira source is disabled and",
+    "the Ask use case skips it. The DefaultJqlFilter is ANDed into every",
+    "search — leave empty to search all accessible Jira issues.",
+    "",
+    "GitHub section: optional. RepoAllowlist is REQUIRED if the section is",
+    "present at all — the provider refuses to search without it, to prevent",
+    "accidental global-search. Use fine-grained PATs scoped per-repo with",
+    "'Contents: Read-only' + 'Metadata: Read-only' as minimum permissions:",
+    "https://github.com/settings/tokens?type=beta"
   ],
   "OpenAi": {
     "ApiKey": "sk-REPLACE_WITH_YOUR_REAL_OPENAI_KEY"
+  },
+  "Jira": {
+    "BaseUrl": "https://your-org.atlassian.net",
+    "Email": "you@your-org.com",
+    "ApiToken": "ATATT3xFfGF0_REPLACE_WITH_YOUR_REAL_ATLASSIAN_TOKEN",
+    "DefaultJqlFilter": "project = COCO AND statusCategory = Done",
+    "CommentsPerIssue": 3
+  },
+  "GitHub": {
+    "PersonalAccessToken": "github_pat_REPLACE_WITH_YOUR_REAL_GITHUB_TOKEN",
+    "RepoAllowlist": [
+      "your-org/content-media-service",
+      "your-org/authoring-service"
+    ]
   }
 }
