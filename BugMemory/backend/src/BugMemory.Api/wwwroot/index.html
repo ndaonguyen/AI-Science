@@ -9,7 +9,7 @@
        served as static files from wwwroot by ASP.NET; default cache
        headers are short but not zero. Same pattern as DistributedDebugger
        uses for its v2/v3 pages. -->
-  <link rel="stylesheet" href="app.css?v=6">
+  <link rel="stylesheet" href="app.css?v=7">
 </head>
 <body>
   <div class="app">
@@ -34,6 +34,23 @@
                   placeholder="e.g. Why did we add MetadataJson to the authoring service?"></textarea>
         <div class="hint">Cmd/Ctrl + Enter to ask</div>
       </div>
+      <!-- Source toggles. The checkboxes drive state.selectedSources, which
+           the API client sends to /api/ask-mixed as the "sources" array.
+           "bugs" is on by default and reflects the local vector store;
+           "jira" / "github" are off by default to keep the cheap-and-fast
+           saved-bugs lookup as the no-decision flow.
+           If neither Jira nor GitHub is configured server-side (no PAT in
+           appsettings.Development.json), the server will report each as
+           a sourceError, which renderAskTab shows as a non-blocking
+           warning above the citations. -->
+      <div class="field">
+        <label class="label">Search in</label>
+        <div class="source-toggles">
+          <label class="source-toggle"><input type="checkbox" data-source="bugs" checked> Saved bugs</label>
+          <label class="source-toggle"><input type="checkbox" data-source="jira"> Jira</label>
+          <label class="source-toggle"><input type="checkbox" data-source="github"> GitHub</label>
+        </div>
+      </div>
       <div class="row end">
         <button class="primary" id="askButton" disabled>Ask</button>
       </div>
@@ -43,8 +60,19 @@
           <h3>Answer</h3>
           <div class="answer-text" id="askAnswerText"></div>
         </div>
+        <!-- Non-blocking warnings for sources that errored at retrieval
+             time (Jira unreachable, GitHub rate-limited, provider not
+             configured). The answer is still rendered above; this just
+             explains what didn't get searched. -->
+        <div id="askSourceErrors" style="display: none;"></div>
         <div class="section-label" id="askSourcesLabel" style="margin-bottom: 8px; display: none;"></div>
         <div id="askSources"></div>
+        <!-- External citations (Jira tickets, GitHub commits) get their
+             own block so the visual treatment can differ from saved-bug
+             cards — a smaller card with a provider badge and a Save-as-
+             bug-memory button. -->
+        <div class="section-label" id="askExternalLabel" style="margin-top: 16px; margin-bottom: 8px; display: none;"></div>
+        <div id="askExternal"></div>
       </div>
     </div>
 
@@ -157,6 +185,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
